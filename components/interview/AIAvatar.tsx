@@ -55,6 +55,8 @@ interface AIAvatarProps {
   audioLevel?: number; // 0 to 100
   selectedPersona?: AvatarPersonaId;
   onPersonaChange?: (id: AvatarPersonaId) => void;
+  className?: string;
+  compact?: boolean;
 }
 
 export function AIAvatar({
@@ -67,6 +69,8 @@ export function AIAvatar({
   audioLevel = 0,
   selectedPersona = "sarah",
   onPersonaChange,
+  className = "",
+  compact = false,
 }: AIAvatarProps) {
   const persona = AVATAR_PERSONAS[selectedPersona] || AVATAR_PERSONAS.sarah;
 
@@ -144,7 +148,7 @@ export function AIAvatar({
   }, [isSpeaking]);
 
   return (
-    <div className="relative rounded-2xl overflow-hidden bg-[#0A0F1D] border border-slate-800 shadow-2xl flex flex-col group">
+    <div className={`relative rounded-2xl overflow-hidden bg-[#0A0F1D] border border-slate-800 shadow-2xl flex flex-col group ${className}`}>
       {/* Top Overlay: Interviewer Badge & Persona Selector */}
       <div className="absolute top-0 inset-x-0 z-20 p-4 bg-gradient-to-b from-[#0A0F1D]/90 via-[#0A0F1D]/50 to-transparent flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -195,7 +199,11 @@ export function AIAvatar({
       </div>
 
       {/* Main Avatar Stage Viewport */}
-      <div className="relative w-full aspect-[16/10] sm:aspect-[16/9] min-h-[320px] max-h-[460px] overflow-hidden flex items-center justify-center bg-gradient-to-b from-[#0F172A] to-[#020617]">
+      <div className={`relative w-full overflow-hidden flex items-center justify-center bg-gradient-to-b from-[#0F172A] to-[#020617] ${
+        compact
+          ? "aspect-[16/10] sm:aspect-[16/9] min-h-[220px] max-h-[300px]"
+          : "aspect-[16/10] sm:aspect-[16/9] min-h-[260px] max-h-[420px]"
+      }`}>
         {/* Background Depth of Field: Executive Technical Interview Room */}
         <div
           className="absolute inset-0 bg-cover bg-center opacity-30 blur-[2px] scale-105"

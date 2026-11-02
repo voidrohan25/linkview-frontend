@@ -7,30 +7,21 @@ import {
   Mic,
   MicOff,
   Volume2,
-  VolumeX,
   Sparkles,
   Send,
   RotateCcw,
   Clock,
   CheckCircle2,
   AlertCircle,
-  HelpCircle,
   Award,
-  ChevronRight,
   ShieldCheck,
   ShieldAlert,
   Play,
-  Pause,
   Keyboard,
-  User,
   Video,
-  VideoOff,
   PhoneOff,
-  FileCheck2,
-  BarChart3,
-  Settings2,
-  Maximize2,
-  Minimize2,
+  AlertTriangle,
+  ArrowRight,
 } from "lucide-react";
 import { AIAvatar, AvatarPersonaId, AVATAR_PERSONAS } from "./AIAvatar";
 import { StudentWebcamFeed, ProctoringDetectionResult } from "./StudentWebcamFeed";
@@ -48,7 +39,7 @@ export function VoiceInterviewRoom({
 }: VoiceInterviewRoomProps) {
   const router = useRouter();
 
-  // Pre-flight check state
+  // Pre-flight check modal state
   const [preflightOpen, setPreflightOpen] = useState(true);
   const [audioOutputTested, setAudioOutputTested] = useState(false);
   const [micAudioLevel, setMicAudioLevel] = useState(0);
@@ -83,9 +74,17 @@ export function VoiceInterviewRoom({
   const [completed, setCompleted] = useState<boolean>(false);
   const [finalScorecard, setFinalScorecard] = useState<any>(null);
 
-  // Proctoring audit state
+  // Proctoring audit state & 4-flag threshold system
   const [proctoringLogs, setProctoringLogs] = useState<ProctoringEvent[]>([]);
-  const [currentWarning, setCurrentWarning] = useState<string | null>(null);
+  const [flagCount, setFlagCount] = useState<number>(0);
+  const [maxAllowedFlags, setMaxAllowedFlags] = useState<number>(3);
+  const [activeWarningModal, setActiveWarningModal] = useState<{
+    visible: boolean;
+    warningNumber: number;
+    message: string;
+    remaining: number;
+  } | null>(null);
+  const [autoSubmittedByProctoring, setAutoSubmittedByProctoring] = useState<boolean>(false);
 
   // Speech Recognition & Audio refs
   const recognitionRef = useRef<any>(null);
@@ -93,6 +92,7 @@ export function VoiceInterviewRoom({
   const isRecognitionRunningRef = useRef<boolean>(false);
   const restartTimerRef = useRef<NodeJS.Timeout | null>(null);
   const blurStartTimeRef = useRef<number | null>(null);
+  const lastRecordedFlagTimeRef = useRef<number>(0);
 
   // Timer interval
   useEffect(() => {
@@ -103,42 +103,104 @@ export function VoiceInterviewRoom({
     return () => clearInterval(interval);
   }, [interviewStarted, completed]);
 
+  // Central Authoritative Proctoring Flag Reporter (Calls Backend /api/proctoring)
+  const reportProctoringFlag = useCallback(
+    async (
+      type: string,
+      severity: string,
+      message: string,
+      durationSeconds?: number
+    ) => {
+      // Cooldown: prevent duplicate flags within 3.5 seconds
+      const now = Date.now();
+      if (now - lastRecordedFlagTimeRef.current < 3500) return;
+      lastRecordedFlagTimeRef.current = now;
+
+      const activeId = sessionId || `int-session-${now}`;
+
+      try {
+        const res = await fetch("/api/proctoring", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            interviewId: activeId,
+            event: {
+              type,
+              severity,
+              message,
+              durationSeconds,
+            },
+            currentTranscript: studentAnswer + (interimText ? ` ${interimText}` : ""),
+          }),
+        });
+
+        const data = await res.json();
+        if (data.success) {
+          const newFlagCount = data.flagCount;
+          setFlagCount(newFlagCount);
+          setMaxAllowedFlags(data.maxAllowedFlags || 3);
+
+          if (data.event) {
+            setProctoringLogs((prev) => [data.event, ...prev]);
+          }
+
+          // RULE 4.3: strictly MORE THAN 3 confirmed flags -> 4th flag submits automatically
+          if (data.autoSubmitted) {
+            stopSpeechRecognition();
+            if (typeof window !== "undefined" && "speechSynthesis" in window) {
+              window.speechSynthesis.cancel();
+            }
+            setActiveWarningModal(null);
+            setAutoSubmittedByProctoring(true);
+            setCompleted(true);
+            setFinalScorecard(data.session?.scorecard || {
+              overallScore: 50,
+              technicalAccuracy: 55,
+              conceptualUnderstanding: 50,
+              communication: 50,
+              problemSolving: 48,
+              strengths: ["Attempted initial assessment questions"],
+              weaknesses: ["Exceeded proctoring flag limit (4 confirmed violations)"],
+              recommendations: ["Maintain full window focus and remain centered in camera view"],
+              aiFeedback: "Interview terminated automatically: Maximum proctoring threshold exceeded.",
+            });
+          } else {
+            // Display formal Warning Modal for flags 1, 2, and 3 (Rule 4.2)
+            setActiveWarningModal({
+              visible: true,
+              warningNumber: newFlagCount,
+              message,
+              remaining: data.remainingFlags,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("Proctoring API report warning:", err);
+      }
+    },
+    [sessionId, studentAnswer, interimText]
+  );
+
   // Tab-switch & window blur proctoring
   useEffect(() => {
     if (preflightOpen || completed) return;
 
-    const recordViolation = (
-      type: ProctoringEvent["type"],
-      severity: ProctoringEvent["severity"],
-      message: string,
-      durationSeconds?: number
-    ) => {
-      const event: ProctoringEvent = {
-        id: `proc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        type,
-        severity,
-        message,
-        timestamp: new Date().toLocaleTimeString(),
-        durationSeconds,
-      };
-
-      setProctoringLogs((prev) => [event, ...prev]);
-      setCurrentWarning(message);
-      setTimeout(() => setCurrentWarning(null), 5000);
-    };
-
     const handleVisibilityChange = () => {
       if (document.hidden) {
         blurStartTimeRef.current = Date.now();
-        recordViolation("tab_switch", "high", "Tab switch detected! Leaving assessment is logged.");
+        reportProctoringFlag(
+          "tab_switch",
+          "high",
+          "Tab switch detected! Candidate navigated away from active assessment."
+        );
       } else if (blurStartTimeRef.current) {
         const awayDuration = Math.round((Date.now() - blurStartTimeRef.current) / 1000);
         blurStartTimeRef.current = null;
-        if (awayDuration > 1) {
-          recordViolation(
+        if (awayDuration > 2) {
+          reportProctoringFlag(
             "tab_switch",
             "high",
-            `Candidate returned after ${awayDuration}s away.`,
+            `Candidate returned after ${awayDuration}s away from assessment.`,
             awayDuration
           );
         }
@@ -148,7 +210,11 @@ export function VoiceInterviewRoom({
     const handleWindowBlur = () => {
       if (!document.hidden && !blurStartTimeRef.current) {
         blurStartTimeRef.current = Date.now();
-        recordViolation("window_blur", "medium", "Window focus lost! Maintain full attention.");
+        reportProctoringFlag(
+          "window_blur",
+          "medium",
+          "Window focus lost! Candidate switched application focus."
+        );
       }
     };
 
@@ -159,7 +225,7 @@ export function VoiceInterviewRoom({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("blur", handleWindowBlur);
     };
-  }, [preflightOpen, completed]);
+  }, [preflightOpen, completed, reportProctoringFlag]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -192,7 +258,7 @@ export function VoiceInterviewRoom({
     }
   };
 
-  // High Quality AI Question Speech (Server TTS with Web Speech fallback)
+  // High Quality AI Question Speech
   const speakQuestion = async (text: string) => {
     if (typeof window === "undefined") return;
 
@@ -201,10 +267,11 @@ export function VoiceInterviewRoom({
     }
 
     setIsSpeakingAI(true);
+    stopSpeechRecognition();
+
     const persona = AVATAR_PERSONAS[selectedPersona];
 
     try {
-      // 1. Try server natural voice endpoint
       const ttsRes = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -218,7 +285,6 @@ export function VoiceInterviewRoom({
       const contentType = ttsRes.headers.get("content-type") || "";
 
       if (ttsRes.ok && contentType.includes("audio/mpeg")) {
-        // High quality ElevenLabs / Google Cloud audio stream
         const blob = await ttsRes.blob();
         const audioUrl = URL.createObjectURL(blob);
         const audio = new Audio(audioUrl);
@@ -237,11 +303,10 @@ export function VoiceInterviewRoom({
         await audio.play();
         return;
       }
-    } catch (e) {
-      console.warn("Server TTS fallback triggered:", e);
+    } catch {
+      // Fallback
     }
 
-    // 2. High-fidelity Web Speech fallback
     fallbackSpeechSynthesis(text);
   };
 
@@ -270,7 +335,7 @@ export function VoiceInterviewRoom({
     window.speechSynthesis.speak(utterance);
   };
 
-  // Speech Recognition with debounced restart
+  // Speech Recognition
   const startSpeechRecognition = () => {
     if (typeof window === "undefined" || textModeOnly) return;
 
@@ -323,7 +388,7 @@ export function VoiceInterviewRoom({
       };
 
       rec.onerror = (event: any) => {
-        if (event.error === "no-speech") return; // Non-fatal pause
+        if (event.error === "no-speech") return;
         if (event.error === "not-allowed") {
           shouldListenRef.current = false;
           isRecognitionRunningRef.current = false;
@@ -378,7 +443,7 @@ export function VoiceInterviewRoom({
     else startSpeechRecognition();
   };
 
-  // Start interview from pre-flight
+  // Start Interview from Pre-flight modal
   const handleStartInterview = async () => {
     setPreflightOpen(false);
     setInterviewStarted(true);
@@ -390,7 +455,7 @@ export function VoiceInterviewRoom({
         body: JSON.stringify({
           track: track.toLowerCase(),
           difficulty,
-          studentName: "Candidate",
+          studentName: "Aarav Sharma",
         }),
       });
 
@@ -410,35 +475,44 @@ export function VoiceInterviewRoom({
   };
 
   // Handle computer vision detection from StudentWebcamFeed
-  const handleDetectionUpdate = useCallback((result: ProctoringDetectionResult) => {
-    if (!result.faceDetected) {
-      setProctoringLogs((prev) => [
-        {
-          id: `face_${Date.now()}`,
-          type: "face_missing",
-          severity: "high",
-          message: result.message || "Candidate face not detected in camera frame",
-          timestamp: new Date().toLocaleTimeString(),
-        },
-        ...prev.slice(0, 49),
-      ]);
-      setCurrentWarning((prev) => prev || "Warning: Face not detected! Keep your face centered in camera view.");
-      setTimeout(() => setCurrentWarning(null), 5000);
-    } else if (result.cameraCovered) {
-      setProctoringLogs((prev) => [
-        {
-          id: `cam_cov_${Date.now()}`,
-          type: "face_missing",
-          severity: "high",
-          message: "Camera lens obstructed or covered",
-          timestamp: new Date().toLocaleTimeString(),
-        },
-        ...prev.slice(0, 49),
-      ]);
-      setCurrentWarning((prev) => prev || "Warning: Camera obstructed! Ensure camera lens is clear.");
-      setTimeout(() => setCurrentWarning(null), 5000);
-    }
-  }, []);
+  const handleDetectionUpdate = useCallback(
+    (result: ProctoringDetectionResult) => {
+      if (preflightOpen || completed) return;
+
+      if (!result.faceDetected) {
+        reportProctoringFlag(
+          "face_missing",
+          "high",
+          result.message || "Candidate face not detected in camera frame. Keep face centered."
+        );
+      } else if (result.cameraCovered) {
+        reportProctoringFlag(
+          "camera_covered",
+          "high",
+          result.message || "Camera lens obstructed or covered."
+        );
+      } else if (result.multipleFaces) {
+        reportProctoringFlag(
+          "multiple_faces",
+          "high",
+          result.message || "Multiple individuals detected in camera view."
+        );
+      } else if (result.gazeAway) {
+        reportProctoringFlag(
+          "gaze_away",
+          "medium",
+          result.message || "Repeated looking away from assessment screen."
+        );
+      } else if (result.headDown) {
+        reportProctoringFlag(
+          "head_down",
+          "medium",
+          result.message || "Prolonged downward head position detected."
+        );
+      }
+    },
+    [preflightOpen, completed, reportProctoringFlag]
+  );
 
   // Submit Answer & Advance Turn
   const handleSubmitAnswer = async () => {
@@ -485,7 +559,6 @@ export function VoiceInterviewRoom({
     }
   };
 
-  // Format timer display MM:SS
   const formatTimer = (totalSeconds: number) => {
     const mins = Math.floor(totalSeconds / 60);
     const secs = totalSeconds % 60;
@@ -493,28 +566,11 @@ export function VoiceInterviewRoom({
   };
 
   return (
-    <div className="max-w-[1440px] mx-auto space-y-5 font-sans">
-      {/* Real-time Warning Banner */}
-      {currentWarning && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-lg w-full px-4 animate-in fade-in slide-in-from-top-4">
-          <div className="p-3.5 rounded-xl bg-red-600 text-white shadow-2xl flex items-center gap-3 border border-red-500">
-            <AlertCircle size={20} className="shrink-0 animate-bounce" />
-            <div className="flex-1 text-xs font-bold">{currentWarning}</div>
-            <button
-              onClick={() => setCurrentWarning(null)}
-              className="text-white/80 hover:text-white text-xs font-bold px-2 py-1"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
-
+    <div className="max-w-[1440px] mx-auto font-sans">
       {/* 1. PRE-FLIGHT HARDWARE, WEBCAM & PROCTORING CHECK MODAL */}
       {preflightOpen && (
         <div className="modal-overlay">
           <div className="modal-content max-w-4xl p-6 sm:p-8 space-y-6 max-h-[92vh] overflow-y-auto">
-            {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-[#E2E8F0]">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 rounded-xl bg-orange-100 text-orange-600">
@@ -536,9 +592,8 @@ export function VoiceInterviewRoom({
               </div>
             </div>
 
-            {/* Split Screen Check: Candidate Live Webcam (Left) & Persona / Track (Right) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-              {/* Left Column: ACTUAL LIVE CAMERA FEED PREVIEW */}
+              {/* Left Column: LIVE CAMERA FEED PREVIEW */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
@@ -548,7 +603,6 @@ export function VoiceInterviewRoom({
                   <span className="text-[10px] text-slate-500 font-mono">1280x720 HD</span>
                 </div>
 
-                {/* Live Candidate Webcam Component */}
                 <StudentWebcamFeed
                   externalStream={sharedStream}
                   onStreamReady={(stream) => setSharedStream(stream)}
@@ -562,9 +616,8 @@ export function VoiceInterviewRoom({
                 </p>
               </div>
 
-              {/* Right Column: Audio & Interview Parameters */}
+              {/* Right Column: Audio & Persona Parameters */}
               <div className="space-y-4">
-                {/* Persona Selection */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
                     AI Interviewer Persona:
@@ -586,65 +639,33 @@ export function VoiceInterviewRoom({
                           <img
                             src={p.avatarImage}
                             alt={p.name}
-                            className="w-10 h-10 rounded-full object-cover object-top border-2 border-slate-300"
+                            className="w-12 h-12 rounded-full object-cover object-top border-2 border-slate-200"
                           />
-                          <div className="text-[11px] font-bold text-[#0F172A] truncate w-full">
+                          <span className="text-xs font-bold text-slate-800 leading-tight">
                             {p.name.split(" ")[1] || p.name}
-                          </div>
+                          </span>
+                          <span className="text-[10px] text-slate-400 capitalize">
+                            {p.voiceGender} Voice
+                          </span>
                         </div>
                       );
                     })}
                   </div>
                 </div>
 
-                {/* Track Selection */}
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <label className="font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                      Track:
-                    </label>
-                    <select
-                      value={track}
-                      onChange={(e) => setTrack(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 text-xs font-semibold text-slate-800"
-                    >
-                      <option value="Python">Python Technical</option>
-                      <option value="Java">Java Enterprise</option>
-                      <option value="DSA">DSA & Algorithms</option>
-                      <option value="SQL">SQL & Database</option>
-                      <option value="React">React Frontend</option>
-                      <option value="FullStack">Full Stack Systems</option>
-                      <option value="Communication">Free Communication & HR</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                      Difficulty:
-                    </label>
-                    <select
-                      value={difficulty}
-                      onChange={(e) => setDifficulty(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 text-xs font-semibold text-slate-800"
-                    >
-                      <option value="beginner">Beginner</option>
-                      <option value="intermediate">Intermediate</option>
-                      <option value="advanced">Advanced</option>
-                    </select>
-                  </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                    Microphone Input Test:
+                  </label>
+                  <AudioDeviceSelector onLevelChange={(lvl: number) => setMicAudioLevel(lvl)} />
                 </div>
 
-                {/* Microphone Hardware Selector & Live VU Meter */}
-                <AudioDeviceSelector onLevelChange={(level) => setMicAudioLevel(level)} />
-
-                {/* Speaker Audio Test */}
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                      <Volume2 size={14} className="text-orange-500" />
-                      <span>Speaker Sound Check</span>
+                    <span className="text-xs font-bold text-slate-800 block">Speaker / Voice Output</span>
+                    <span className="text-[11px] text-slate-500">
+                      Test AI voice synthesis playback
                     </span>
-                    <p className="text-[10px] text-slate-500 m-0">Click to verify audio output</p>
                   </div>
                   <button
                     type="button"
@@ -658,7 +679,6 @@ export function VoiceInterviewRoom({
               </div>
             </div>
 
-            {/* Proctoring Consent */}
             <div className="p-3.5 rounded-xl bg-blue-50/70 border border-blue-200 flex items-start gap-3">
               <input
                 type="checkbox"
@@ -668,11 +688,10 @@ export function VoiceInterviewRoom({
                 className="mt-1 h-4 w-4 rounded text-orange-600 focus:ring-orange-500"
               />
               <label htmlFor="proc-consent" className="text-xs text-blue-900 leading-relaxed cursor-pointer">
-                <strong>Proctored Environment Agreement:</strong> I agree to continuous webcam face tracking and window focus monitoring throughout this interview. Tab switches and camera interruptions will be recorded in the final scorecard.
+                <strong>Proctored Environment Agreement:</strong> I agree to continuous webcam face tracking and window focus monitoring. Maximum 3 warnings allowed; the 4th confirmed flag will trigger automatic submission.
               </label>
             </div>
 
-            {/* Footer Buttons */}
             <div className="pt-2 border-t border-[#E2E8F0] flex items-center justify-between">
               <Link href="/student/dashboard" className="text-xs font-semibold text-slate-500 hover:text-slate-800">
                 Cancel & Return
@@ -691,19 +710,79 @@ export function VoiceInterviewRoom({
         </div>
       )}
 
-      {/* 2. COMPLETED SCORECARD VIEW */}
+      {/* 2. PROCTORING WARNING MODAL (Rule 4.2: Flags 1, 2, 3) */}
+      {activeWarningModal && activeWarningModal.visible && !completed && (
+        <div className="modal-overlay">
+          <div className="modal-content max-w-lg p-6 bg-white border-2 border-red-500 shadow-2xl rounded-2xl space-y-4 animate-in zoom-in-95">
+            <div className="flex items-start gap-3.5">
+              <div className="p-3 rounded-2xl bg-red-100 text-red-600 shrink-0">
+                <AlertTriangle size={28} />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-red-600 text-white uppercase tracking-wider">
+                    Warning {activeWarningModal.warningNumber} of 3
+                  </span>
+                  {activeWarningModal.warningNumber === 3 && (
+                    <span className="text-[11px] font-extrabold text-red-600 animate-pulse">
+                      FINAL WARNING
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-lg font-extrabold text-slate-900 m-0">
+                  Proctoring Security Warning
+                </h3>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-red-50/80 border border-red-200 text-xs text-red-900 leading-relaxed space-y-2">
+              <p className="font-semibold m-0">{activeWarningModal.message}</p>
+              <p className="text-[11px] text-red-700 m-0">
+                {activeWarningModal.warningNumber >= 3
+                  ? "CRITICAL: You have reached 3 warnings. Strictly one more confirmed flag will automatically terminate and submit your interview!"
+                  : `Please keep your face clearly visible, maintain center alignment, and do not switch browser tabs. Remaining warnings: ${activeWarningModal.remaining}.`}
+              </p>
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[11px] text-slate-500 font-mono">
+                Confirmed Flag #{activeWarningModal.warningNumber} Recorded
+              </span>
+              <button
+                type="button"
+                onClick={() => setActiveWarningModal(null)}
+                className="btn btn-primary text-xs py-2 px-5 font-bold shadow-md"
+              >
+                Continue Interview
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. COMPLETED SCORECARD OR AUTO-SUBMISSION RESULT VIEW */}
       {completed && finalScorecard ? (
-        <div className="card p-6 sm:p-8 bg-white border border-[#E2E8F0] shadow-lg rounded-2xl space-y-6">
+        <div className="card p-6 sm:p-8 bg-white border border-[#E2E8F0] shadow-lg rounded-2xl space-y-6 max-w-4xl mx-auto my-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-[#E2E8F0] gap-4">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  INTERVIEW CONCLUDED
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                    autoSubmittedByProctoring
+                      ? "bg-red-100 text-red-800 border border-red-300"
+                      : "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                  }`}
+                >
+                  {autoSubmittedByProctoring
+                    ? "AUTO-SUBMITTED (PROCTORING THRESHOLD)"
+                    : "INTERVIEW CONCLUDED"}
                 </span>
-                <span className="text-xs text-slate-500">• Placement Readiness Scorecard</span>
+                <span className="text-xs text-slate-500">• Technical Evaluation Summary</span>
               </div>
               <h2 className="text-2xl font-extrabold text-[#0F172A] m-0">
-                {track} Technical Evaluation Summary
+                {autoSubmittedByProctoring
+                  ? "Interview Automatically Submitted"
+                  : `${track} Technical Evaluation Summary`}
               </h2>
             </div>
 
@@ -711,7 +790,7 @@ export function VoiceInterviewRoom({
               <div className="text-right">
                 <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Overall Score</div>
                 <div className="text-3xl font-extrabold text-orange-600 font-mono leading-none">
-                  {finalScorecard.overallScore || 85}%
+                  {finalScorecard.overallScore || 50}%
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-orange-50 text-orange-600 border border-orange-200">
@@ -720,101 +799,70 @@ export function VoiceInterviewRoom({
             </div>
           </div>
 
+          {autoSubmittedByProctoring && (
+            <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-xs text-red-900 leading-relaxed space-y-1">
+              <p className="font-bold text-sm m-0">Proctoring Flag Limit Exceeded (4 Confirmed Flags)</p>
+              <p className="m-0 text-red-700">
+                Your interview was automatically submitted by the system because the maximum allowable security flags were exceeded. The verbal answers recorded up to this point have been safely saved for faculty review.
+              </p>
+            </div>
+          )}
+
           {/* 4 Rubric Evaluation Dimension Bars */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                 Technical Accuracy
               </span>
-              <div className="text-xl font-extrabold text-slate-800">
-                {finalScorecard.technicalAccuracy || 88}%
-              </div>
-              <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-emerald-500 rounded-full"
-                  style={{ width: `${finalScorecard.technicalAccuracy || 88}%` }}
-                />
+              <div className="text-2xl font-extrabold text-slate-900 font-mono">
+                {finalScorecard.technicalAccuracy || 55}%
               </div>
             </div>
-
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                 Conceptual Depth
               </span>
-              <div className="text-xl font-extrabold text-slate-800">
-                {finalScorecard.conceptualUnderstanding || 84}%
-              </div>
-              <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-blue-500 rounded-full"
-                  style={{ width: `${finalScorecard.conceptualUnderstanding || 84}%` }}
-                />
+              <div className="text-2xl font-extrabold text-slate-900 font-mono">
+                {finalScorecard.conceptualUnderstanding || 50}%
               </div>
             </div>
-
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                Problem Solving
-              </span>
-              <div className="text-xl font-extrabold text-slate-800">
-                {finalScorecard.problemSolving || 82}%
-              </div>
-              <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-orange-500 rounded-full"
-                  style={{ width: `${finalScorecard.problemSolving || 82}%` }}
-                />
-              </div>
-            </div>
-
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                 Communication Fluency
               </span>
-              <div className="text-xl font-extrabold text-slate-800">
-                {finalScorecard.communication || 90}%
+              <div className="text-2xl font-extrabold text-slate-900 font-mono">
+                {finalScorecard.communication || 50}%
               </div>
-              <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-purple-500 rounded-full"
-                  style={{ width: `${finalScorecard.communication || 90}%` }}
-                />
+            </div>
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                Problem Solving
+              </span>
+              <div className="text-2xl font-extrabold text-slate-900 font-mono">
+                {finalScorecard.problemSolving || 48}%
               </div>
             </div>
           </div>
 
-          {/* AI Evaluator Feedback */}
-          <div className="p-4 rounded-xl bg-slate-900 text-white space-y-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-orange-400">
-              <Sparkles size={15} />
-              <span>AI Evaluator Final Verdict</span>
-            </div>
-            <p className="text-xs sm:text-sm text-slate-200 leading-relaxed m-0">
-              {finalScorecard.aiFeedback ||
-                finalScorecard.summary ||
-                "Demonstrated strong technical acumen and structured articulation throughout the assessment."}
-            </p>
-          </div>
-
-          {/* Proctoring & Integrity Audit */}
+          {/* Proctoring & Integrity Audit Timeline */}
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ShieldCheck size={16} className="text-emerald-600" />
                 <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                  Proctoring & Exam Integrity Audit
+                  Proctoring & Exam Integrity Audit Log
                 </span>
               </div>
               <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
                   proctoringLogs.length === 0
                     ? "bg-emerald-100 text-emerald-800"
-                    : "bg-amber-100 text-amber-800"
+                    : "bg-red-100 text-red-800"
                 }`}
               >
                 {proctoringLogs.length === 0
-                  ? "Clean Integrity Verification ✓"
-                  : `${proctoringLogs.length} Events Logged`}
+                  ? "Clean Verification ✓"
+                  : `${proctoringLogs.length} Security Flags Logged`}
               </span>
             </div>
 
@@ -823,14 +871,16 @@ export function VoiceInterviewRoom({
                 Zero security flags recorded. The candidate remained centered in webcam view with continuous window focus.
               </p>
             ) : (
-              <div className="space-y-1.5">
-                {proctoringLogs.slice(0, 4).map((log) => (
+              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                {proctoringLogs.map((log) => (
                   <div
                     key={log.id}
                     className="p-2 rounded-lg bg-white border border-slate-200 text-xs flex items-center justify-between"
                   >
-                    <span className="text-slate-700">{log.message}</span>
-                    <span className="text-[10px] text-slate-400 font-mono">{log.timestamp}</span>
+                    <span className="text-slate-700 font-medium">{log.message}</span>
+                    <span className="text-[10px] text-slate-400 font-mono shrink-0 ml-2">
+                      {log.timestamp}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -847,10 +897,10 @@ export function VoiceInterviewRoom({
           </div>
         </div>
       ) : (
-        /* 3. ACTIVE COMMERCIAL INTERVIEW ROOM */
-        <div className="space-y-4">
-          {/* Top Status & Telemetry Bar (Timer, Turn, Network & Proctoring Status) */}
-          <div className="p-3 sm:p-4 rounded-2xl bg-white border border-[#E2E8F0] shadow-sm flex flex-wrap items-center justify-between gap-3">
+        /* 4. SINGLE-FRAME COMMERCIAL INTERVIEW ROOM (PART 5 - NO PAGE SCROLLING REQUIRED) */
+        <div className="flex flex-col h-[calc(100vh-5.5rem)] min-h-[640px] max-h-[880px] overflow-hidden space-y-3">
+          {/* Top Status & Telemetry Bar */}
+          <div className="p-2.5 sm:p-3 rounded-2xl bg-white border border-[#E2E8F0] shadow-sm flex flex-wrap items-center justify-between gap-2 shrink-0">
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-slate-900 text-white font-mono text-xs font-bold shadow-sm">
                 <Clock size={13} className="text-orange-400" />
@@ -867,10 +917,21 @@ export function VoiceInterviewRoom({
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Proctoring Secured</span>
-              </span>
+              {/* Flag Counter Indicator (Rule 4.3) */}
+              <div
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
+                  flagCount === 0
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    : flagCount <= 2
+                    ? "bg-amber-50 text-amber-700 border-amber-300"
+                    : "bg-red-50 text-red-700 border-red-300 animate-pulse"
+                }`}
+              >
+                <ShieldCheck size={13} />
+                <span>
+                  Proctoring Flags: {flagCount} / {maxAllowedFlags} Allowed
+                </span>
+              </div>
 
               <button
                 type="button"
@@ -883,250 +944,210 @@ export function VoiceInterviewRoom({
             </div>
           </div>
 
-          {/* MAIN STAGE: TWO PROMINENT VIDEO TILES (AI Interviewer + Live Candidate Webcam) */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch">
-            {/* Tile 1: AI Human Interviewer Avatar */}
-            <div className="flex flex-col">
-              <AIAvatar
-                isSpeaking={isSpeakingAI}
-                isListening={isListening}
-                isEvaluating={isSubmitting}
-                currentTurn={currentTurn}
-                totalTurns={totalTurns}
-                trackName={track}
-                audioLevel={micAudioLevel}
-                selectedPersona={selectedPersona}
-                onPersonaChange={(id) => setSelectedPersona(id)}
-              />
-            </div>
-
-            {/* Tile 2: ACTUAL LIVE CANDIDATE WEBCAM */}
-            <div className="flex flex-col">
-              <StudentWebcamFeed
-                externalStream={sharedStream}
-                onStreamReady={(stream) => setSharedStream(stream)}
-                onDetectionUpdate={handleDetectionUpdate}
-                onCameraStatusChange={(active) => setCameraActive(active)}
-                className="h-full min-h-[320px]"
-              />
-            </div>
-          </div>
-
-          {/* Question Prompter Card */}
-          <div className="card p-5 sm:p-6 bg-white border border-[#E2E8F0] shadow-sm rounded-2xl space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-orange-600 uppercase tracking-wider">
-                Question {currentTurn} of {totalTurns}
-              </span>
-
-              <button
-                type="button"
-                onClick={() => speakQuestion(currentQuestion)}
-                disabled={isSpeakingAI}
-                className="btn btn-outline btn-sm text-xs py-1 px-3 flex items-center gap-1.5 font-bold disabled:opacity-50"
-              >
-                <Volume2 size={13} className={isSpeakingAI ? "animate-pulse text-orange-500" : ""} />
-                <span>{isSpeakingAI ? "Speaking..." : "Replay Question Audio"}</span>
-              </button>
-            </div>
-
-            <h3 className="text-base sm:text-lg font-bold text-[#0F172A] leading-relaxed m-0">
-              "{currentQuestion}"
-            </h3>
-          </div>
-
-          {/* Answer Input Stage: Live Speech Transcript & Controls */}
-          <div className="card p-5 sm:p-6 bg-white border border-[#E2E8F0] shadow-sm rounded-2xl space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div
-                  className={`p-1.5 rounded-lg ${
-                    isListening ? "bg-emerald-100 text-emerald-700 animate-pulse" : "bg-slate-100 text-slate-600"
-                  }`}
-                >
-                  <Mic size={16} />
-                </div>
-                <div>
-                  <span className="text-xs font-bold text-slate-800 block">
-                    {textModeOnly ? "Text Typing Mode" : "Voice Answer Transcript"}
-                  </span>
-                  <span className="text-[10px] text-slate-500">
-                    {textModeOnly
-                      ? "Type your technical answer below"
-                      : isListening
-                      ? "Speak naturally into your microphone..."
-                      : "Microphone on standby. Click Start Speaking below to answer."}
-                  </span>
-                </div>
+          {/* MAIN STAGE: TWO-COLUMN BALANCED GRID (Left: AI & Question, Right: Webcam & Live Transcript) */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 flex-1 min-h-0 items-stretch">
+            {/* COLUMN 1: AI Human Interviewer Avatar & Question Prompter */}
+            <div className="flex flex-col justify-between space-y-3 min-h-0">
+              {/* AI Avatar Tile */}
+              <div className="flex-1 min-h-0">
+                <AIAvatar
+                  isSpeaking={isSpeakingAI}
+                  isListening={isListening}
+                  isEvaluating={isSubmitting}
+                  currentTurn={currentTurn}
+                  totalTurns={totalTurns}
+                  trackName={track}
+                  audioLevel={micAudioLevel}
+                  selectedPersona={selectedPersona}
+                  onPersonaChange={(id) => setSelectedPersona(id)}
+                  compact={true}
+                  className="h-full"
+                />
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isListening) stopSpeechRecognition();
-                    setTextModeOnly(!textModeOnly);
-                  }}
-                  className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
-                >
-                  <Keyboard size={13} />
-                  <span>{textModeOnly ? "Enable Voice" : "Switch to Typing"}</span>
-                </button>
+              {/* Integrated AI Question Prompter Card */}
+              <div className="card p-4 sm:p-4.5 bg-white border border-[#E2E8F0] shadow-sm rounded-2xl shrink-0 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-orange-600 uppercase tracking-wider">
+                    Question {currentTurn} of {totalTurns}
+                  </span>
 
-                <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
-                  {studentAnswer.split(/\s+/).filter(Boolean).length} words
-                </span>
-              </div>
-            </div>
-
-            {/* Answer Textarea */}
-            <div className="relative">
-              <textarea
-                rows={4}
-                value={studentAnswer + (interimText ? ` ${interimText}` : "")}
-                onChange={(e) => setStudentAnswer(e.target.value)}
-                placeholder={
-                  textModeOnly
-                    ? "Type your detailed technical explanation here..."
-                    : "Speak your answer. Your speech will stream here in real time..."
-                }
-                className="w-full p-4 rounded-xl border border-slate-300 text-xs sm:text-sm font-sans focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 leading-relaxed resize-none bg-slate-50/50"
-              />
-
-              {interimText && (
-                <span className="absolute bottom-3 right-3 text-[11px] text-orange-600 animate-pulse font-medium">
-                  Streaming audio...
-                </span>
-              )}
-            </div>
-
-            {/* BOTTOM CALL CONTROL DOCK */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-              <div className="flex items-center gap-2">
-                {!textModeOnly && (
                   <button
                     type="button"
-                    onClick={toggleListening}
-                    className={`btn text-xs py-2.5 px-5 font-bold flex items-center gap-2 rounded-xl transition-all shadow-sm ${
-                      isListening
-                        ? "bg-red-600 hover:bg-red-700 text-white"
-                        : "bg-emerald-600 hover:bg-emerald-700 text-white"
-                    }`}
+                    onClick={() => speakQuestion(currentQuestion)}
+                    disabled={isSpeakingAI}
+                    className="btn btn-outline btn-sm text-[11px] py-1 px-2.5 flex items-center gap-1.5 font-bold disabled:opacity-50"
                   >
-                    {isListening ? (
-                      <>
-                        <Pause size={15} />
-                        <span>Pause Mic</span>
-                      </>
-                    ) : (
-                      <>
-                        <Play size={15} />
-                        <span>Start Speaking</span>
-                      </>
-                    )}
+                    <Volume2 size={12} className={isSpeakingAI ? "animate-pulse text-orange-500" : ""} />
+                    <span>{isSpeakingAI ? "Speaking..." : "Replay Question Audio"}</span>
                   </button>
-                )}
+                </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStudentAnswer("");
-                    setInterimText("");
-                  }}
-                  className="btn btn-ghost text-xs py-2 px-3 text-slate-500 hover:text-slate-800"
-                  title="Clear transcript"
-                >
-                  <RotateCcw size={13} />
-                  <span>Clear</span>
-                </button>
+                <h3 className="text-sm sm:text-base font-extrabold text-[#0F172A] leading-snug m-0">
+                  "{currentQuestion}"
+                </h3>
               </div>
-
-              <button
-                type="button"
-                onClick={handleSubmitAnswer}
-                disabled={isSubmitting || (!studentAnswer.trim() && !interimText.trim())}
-                className="btn btn-primary text-xs py-2.5 px-6 font-bold flex items-center gap-2 rounded-xl shadow-md disabled:opacity-50"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Sparkles size={14} className="animate-spin" />
-                    <span>Evaluating Response...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Submit Turn {currentTurn}</span>
-                    <Send size={14} />
-                  </>
-                )}
-              </button>
             </div>
-          </div>
 
-          {/* Turn History & Feedback Drawer */}
-          {turnHistory.length > 0 && (
-            <div className="card p-5 bg-white border border-[#E2E8F0] shadow-sm rounded-2xl space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                  <BarChart3 size={14} className="text-orange-500" />
-                  <span>Completed Turn Evaluations</span>
-                </span>
-                <span className="text-xs text-slate-500">
-                  {turnHistory.length} of {totalTurns} completed
-                </span>
+            {/* COLUMN 2: Candidate Live Webcam & Live Spoken Transcript */}
+            <div className="flex flex-col justify-between space-y-3 min-h-0">
+              {/* Candidate Webcam Feed Tile */}
+              <div className="shrink-0">
+                <StudentWebcamFeed
+                  externalStream={sharedStream}
+                  onStreamReady={(stream) => setSharedStream(stream)}
+                  onDetectionUpdate={handleDetectionUpdate}
+                  onCameraStatusChange={(active) => setCameraActive(active)}
+                  compact={true}
+                  className="shadow-md"
+                />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {turnHistory.map((h, i) => (
-                  <div key={i} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-orange-600">Turn {h.turn}</span>
-                      <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                        {h.score}/10 pts
+              {/* Live Answer Transcript Panel with Internal Scroll */}
+              <div className="card p-4 bg-white border border-[#E2E8F0] shadow-sm rounded-2xl flex-1 flex flex-col justify-between min-h-0 space-y-2.5">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`p-1.5 rounded-lg ${
+                        isListening
+                          ? "bg-emerald-100 text-emerald-700 animate-pulse"
+                          : "bg-slate-100 text-slate-600"
+                      }`}
+                    >
+                      <Mic size={15} />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 block">Voice Answer Transcript</span>
+                      <span className="text-[10px] text-slate-400">
+                        {isListening ? "Listening continuously in real time..." : "Microphone paused"}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-700 italic line-clamp-2 m-0">"{h.studentAnswer}"</p>
-                    <p className="text-[11px] text-slate-500 m-0">{h.feedback}</p>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
 
-          {/* Confirm End Call Modal */}
-          {confirmEndOpen && (
-            <div className="modal-overlay">
-              <div className="modal-content max-w-sm p-6 text-center space-y-4">
-                <div className="p-3 rounded-full bg-red-100 text-red-600 w-fit mx-auto">
-                  <PhoneOff size={24} />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setTextModeOnly(!textModeOnly)}
+                      className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 border border-slate-200 px-2 py-0.5 rounded-lg hover:bg-slate-50"
+                    >
+                      <Keyboard size={12} />
+                      <span>{textModeOnly ? "Voice Mode" : "Switch to Typing"}</span>
+                    </button>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      {studentAnswer.split(" ").filter(Boolean).length} words
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 m-0">Leave Interview Room?</h3>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Your current answers and proctoring logs will be saved to your dashboard.
-                  </p>
+
+                {/* Internal Scrollable Content Box */}
+                <div className="flex-1 min-h-[90px] max-h-[160px] overflow-y-auto bg-slate-50 rounded-xl p-3 border border-slate-200 focus-within:border-orange-500 transition-colors">
+                  {textModeOnly ? (
+                    <textarea
+                      value={studentAnswer}
+                      onChange={(e) => setStudentAnswer(e.target.value)}
+                      placeholder="Type your technical response here..."
+                      className="w-full h-full bg-transparent resize-none text-xs text-slate-800 focus:outline-none"
+                    />
+                  ) : (
+                    <div className="text-xs text-slate-800 leading-relaxed font-sans">
+                      {studentAnswer ? (
+                        <span>
+                          {studentAnswer}{" "}
+                          {interimText && <span className="text-slate-400 italic">{interimText}</span>}
+                        </span>
+                      ) : interimText ? (
+                        <span className="text-slate-400 italic">{interimText}</span>
+                      ) : (
+                        <span className="text-slate-400 italic">
+                          Speak naturally into your microphone. Your speech will stream here in real time...
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div className="flex justify-center gap-3">
+
+                {/* Action Controls Footer */}
+                <div className="flex items-center justify-between pt-1 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={toggleListening}
+                      className={`btn btn-sm text-xs py-1.5 px-3 font-bold flex items-center gap-1.5 ${
+                        isListening
+                          ? "bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-200"
+                          : "bg-emerald-600 text-white hover:bg-emerald-700"
+                      }`}
+                    >
+                      {isListening ? <MicOff size={13} /> : <Mic size={13} />}
+                      <span>{isListening ? "Pause Mic" : "Resume Mic"}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStudentAnswer("");
+                        setInterimText("");
+                      }}
+                      className="text-xs font-semibold text-slate-400 hover:text-slate-700 px-2 py-1 flex items-center gap-1"
+                    >
+                      <RotateCcw size={12} />
+                      <span>Clear</span>
+                    </button>
+                  </div>
+
                   <button
                     type="button"
-                    onClick={() => setConfirmEndOpen(false)}
-                    className="btn btn-outline text-xs py-2 px-4"
+                    onClick={handleSubmitAnswer}
+                    disabled={isSubmitting || (!studentAnswer.trim() && !interimText.trim())}
+                    className="btn btn-primary text-xs py-2 px-5 font-bold shadow-md flex items-center gap-1.5 disabled:opacity-50"
                   >
-                    Stay in Room
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => router.push("/student/dashboard")}
-                    className="btn btn-primary text-xs py-2 px-4 bg-red-600 hover:bg-red-700 text-white"
-                  >
-                    Confirm Exit
+                    <span>{isSubmitting ? "Evaluating..." : `Submit Turn ${currentTurn}`}</span>
+                    <Send size={13} />
                   </button>
                 </div>
               </div>
             </div>
-          )}
+          </div>
+        </div>
+      )}
+
+      {/* Voluntary End Call Confirmation Modal */}
+      {confirmEndOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content max-w-sm p-6 bg-white rounded-2xl shadow-xl text-center space-y-4">
+            <div className="p-3 rounded-full bg-red-100 text-red-600 w-fit mx-auto">
+              <PhoneOff size={24} />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-extrabold text-slate-900 m-0">End Interview Early?</h3>
+              <p className="text-xs text-slate-500 m-0">
+                Your submitted turns will be evaluated up to this point. Early exits are logged in proctoring audits.
+              </p>
+            </div>
+            <div className="pt-2 flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmEndOpen(false)}
+                className="btn btn-outline text-xs py-2 px-4 font-bold"
+              >
+                Resume
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmEndOpen(false);
+                  setCompleted(true);
+                }}
+                className="btn btn-primary text-xs py-2 px-4 font-bold bg-red-600 hover:bg-red-700 text-white"
+              >
+                Yes, End Assessment
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
   );
 }
+
 export default VoiceInterviewRoom;

@@ -139,17 +139,17 @@ export function AppShell({
       {
         groupTitle: "CANDIDATE PORTAL",
         items: [
-          { label: "My Dashboard", href: "/student/dashboard", icon: Award },
-          { label: "Mock Interviews", href: "/student/interviews", icon: Sparkles, badge: "AI" },
+          { label: "Dashboard", href: "/student/dashboard", icon: LayoutDashboard },
+          { label: "My Interviews", href: "/student/interviews", icon: Sparkles, badge: "AI" },
           { label: "Voice Interview Room", href: "/student/interview/active", icon: Mic },
         ],
       },
       {
-        groupTitle: "REPORTS & PRACTICE",
+        groupTitle: "PRACTICE & REPORTS",
         items: [
-          { label: "My Scorecards", href: "/student/results", icon: FileCheck2 },
-          { label: "Curriculum Mastery", href: "/student/performance", icon: Target },
-          { label: "Prep Materials", href: "/student/materials", icon: BookOpen },
+          { label: "Practice", href: "/student/practice", icon: BookOpen },
+          { label: "My Reports", href: "/student/results", icon: FileCheck2 },
+          { label: "Profile", href: "/student/profile", icon: Users },
         ],
       },
     ],

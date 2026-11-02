@@ -4,430 +4,469 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import {
-  Award,
-  Sparkles,
-  Mic,
-  FileCheck2,
-  BookOpen,
-  Target,
-  Clock,
-  ArrowRight,
-  TrendingUp,
-  CheckCircle2,
   Calendar,
-  Layers,
-  Code,
+  Clock,
+  Mic,
+  Sparkles,
+  CheckCircle2,
+  AlertCircle,
+  FileText,
+  User,
+  Bell,
+  ArrowRight,
   ShieldCheck,
+  ChevronRight,
+  Play,
+  RotateCcw,
+  BookOpen,
 } from "lucide-react";
 
+interface ScheduledInterview {
+  id: string;
+  technology: string;
+  interviewType: string;
+  difficulty: string;
+  scheduledAt: string;
+  durationMinutes: number;
+  trainerName: string;
+  batchName: string;
+  status: "scheduled" | "in_progress" | "completed" | "cancelled";
+  availability?: {
+    status: "available" | "future" | "expired";
+    countdownSeconds: number;
+    formattedTimeLeft: string;
+    canJoin: boolean;
+  };
+  scorecard?: {
+    overallScore: number;
+  };
+}
+
+interface CommunicationTrack {
+  id: string;
+  title: string;
+  category: string;
+  description: string;
+  durationMinutes: number;
+  freeAttemptsRemaining: number;
+  trackId: string;
+}
+
 export default function StudentDashboardPage() {
-  const [readinessScore, setReadinessScore] = useState(86);
-  const [interviews, setInterviews] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [student, setStudent] = useState({
+    fullName: "Aarav Sharma",
+    email: "aarav.sharma@linktest.io",
+    batchName: "Python Full Stack Placement Cohort 2026-A",
+  });
+  const [nextInterview, setNextInterview] = useState<ScheduledInterview | null>(null);
+  const [upcomingInterviews, setUpcomingInterviews] = useState<ScheduledInterview[]>([]);
+  const [completedInterviews, setCompletedInterviews] = useState<ScheduledInterview[]>([]);
+  const [freeTracks, setFreeTracks] = useState<CommunicationTrack[]>([]);
+  const [countdown, setCountdown] = useState<string>("");
 
   useEffect(() => {
     fetch("/api/interviews?role=student")
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.data) {
-          if (data.data.upcomingInterviews) setInterviews(data.data.upcomingInterviews);
-          if (data.data.readinessScore) setReadinessScore(data.data.readinessScore);
+          if (data.data.student) setStudent(data.data.student);
+          if (data.data.nextScheduledInterview) setNextInterview(data.data.nextScheduledInterview);
+          if (data.data.upcomingInterviews) setUpcomingInterviews(data.data.upcomingInterviews);
+          if (data.data.completedInterviews) setCompletedInterviews(data.data.completedInterviews);
+          if (data.data.freeCommunicationTracks) setFreeTracks(data.data.freeCommunicationTracks);
         }
       })
-      .catch((err) => console.error(err));
+      .catch((err) => console.error("Error loading student dashboard:", err))
+      .finally(() => setLoading(false));
   }, []);
 
-  const readinessColor = readinessScore >= 75 ? "#16A34A" : readinessScore >= 65 ? "#D97706" : "#DC2626";
-  const readinessBg = readinessScore >= 75 ? "#DCFCE7" : readinessScore >= 65 ? "#FEF3C7" : "#FEE2E2";
-  const readinessStatus =
-    readinessScore >= 75
-      ? "Placement Ready (≥75%)"
-      : readinessScore >= 65
-      ? "Preparation Warning (65-74%)"
-      : "Critical Shortage (<65%)";
+  // Real-time countdown timer for next scheduled interview
+  useEffect(() => {
+    if (!nextInterview?.scheduledAt) return;
+
+    const timer = setInterval(() => {
+      const scheduledTime = new Date(nextInterview.scheduledAt).getTime();
+      const now = Date.now();
+      const diffSec = Math.round((scheduledTime - now) / 1000);
+
+      if (diffSec <= 0 && diffSec > -3600) {
+        setCountdown("Interview Window Open Now");
+      } else if (diffSec > 0) {
+        const hours = Math.floor(diffSec / 3600);
+        const mins = Math.floor((diffSec % 3600) / 60);
+        const secs = diffSec % 60;
+        setCountdown(`${hours > 0 ? `${hours}h ` : ""}${mins}m ${secs}s remaining`);
+      } else {
+        setCountdown("Scheduled Time Concluded");
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [nextInterview]);
+
+  const currentDateFormatted = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 
   return (
-    <AppShell role="student" userName="Aarav Sharma" userEmail="aarav.sharma@linktest.io">
-      <div className="max-w-[1400px] mx-auto space-y-6">
-        {/* LinkTest Student Portal Gradient Banner */}
-        <div
-          className="rounded-2xl p-6 sm:p-8 text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-5"
-          style={{ background: "linear-gradient(135deg, #0F172A 0%, #0B1120 100%)" }}
-        >
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 tracking-wide uppercase">
-                STUDENT PORTAL
+    <AppShell role="student" userName={student.fullName} userEmail={student.email}>
+      <div className="max-w-[1280px] mx-auto space-y-6">
+        {/* A. WELCOME SECTION (Compact, purposeful, non-distracting) */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#E2E8F0] shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-xl bg-orange-600 text-white font-extrabold flex items-center justify-center text-sm shadow-md shrink-0">
+              {student.fullName
+                .split(" ")
+                .map((n) => n[0])
+                .join("")}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg sm:text-xl font-extrabold text-[#0F172A] m-0">
+                  Welcome back, {student.fullName.split(" ")[0]}! 👋
+                </h1>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  Enrolled
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 m-0">
+                Ready to improve your interview skills? • {student.batchName}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 self-end sm:self-auto text-xs text-slate-500">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
+              <Calendar size={13} className="text-slate-400" />
+              <span>{currentDateFormatted}</span>
+            </div>
+            <div className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 relative">
+              <Bell size={15} />
+              <span className="w-2 h-2 rounded-full bg-orange-500 absolute top-1 right-1" />
+            </div>
+          </div>
+        </div>
+
+        {/* B. NEXT SCHEDULED MOCK INTERVIEW — HIGHEST PRIORITY (Prominent Card) */}
+        {nextInterview ? (
+          <div className="card p-5 sm:p-6 bg-gradient-to-r from-slate-900 via-[#0F172A] to-slate-900 border border-slate-800 text-white shadow-xl rounded-2xl relative overflow-hidden">
+            {/* Subtle ambient backdrop glow */}
+            <div className="absolute top-0 right-0 w-80 h-80 bg-orange-500/10 rounded-full filter blur-3xl pointer-events-none" />
+
+            <div className="relative z-10 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-orange-500 text-white tracking-wider uppercase">
+                    NEXT UPCOMING MOCK INTERVIEW
+                  </span>
+                  <span className="text-xs text-slate-300 font-mono">
+                    {nextInterview.difficulty ? `${nextInterview.difficulty.toUpperCase()} LEVEL` : "TECHNICAL"}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-emerald-300 font-bold font-mono">
+                    {countdown || "Available to Join"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
+                <div className="space-y-2">
+                  <h2 className="text-xl sm:text-2xl font-extrabold text-white leading-snug m-0">
+                    {nextInterview.technology} Technical AI Mock Interview
+                  </h2>
+
+                  <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-xs text-slate-300">
+                    <span className="flex items-center gap-1.5">
+                      <Calendar size={13} className="text-orange-400" />
+                      <span>{new Date(nextInterview.scheduledAt).toLocaleDateString()}</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <Clock size={13} className="text-orange-400" />
+                      <span>{new Date(nextInterview.scheduledAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <ShieldCheck size={13} className="text-emerald-400" />
+                      <span>Proctored Session (~{nextInterview.durationMinutes || 30} mins)</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <User size={13} className="text-slate-400" />
+                      <span>Assigned by: {nextInterview.trainerName}</span>
+                    </span>
+                  </div>
+                </div>
+
+                {/* C. INTERVIEW AVAILABILITY ACTION (Backend-Validated Logic) */}
+                <div className="shrink-0 flex items-center gap-3">
+                  {nextInterview.status === "completed" ? (
+                    <Link
+                      href="/student/results"
+                      className="btn btn-outline text-xs py-2.5 px-5 font-bold bg-white/10 text-white border-white/20 hover:bg-white/20"
+                    >
+                      View Result
+                    </Link>
+                  ) : nextInterview.availability?.status === "expired" ? (
+                    <div className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-400 text-xs font-bold border border-slate-700">
+                      Interview Window Expired
+                    </div>
+                  ) : nextInterview.availability?.status === "future" ? (
+                    <div className="space-y-1 text-right">
+                      <button
+                        disabled
+                        className="btn btn-outline text-xs py-2.5 px-5 font-bold text-slate-400 border-slate-700 opacity-60 cursor-not-allowed"
+                      >
+                        Not Yet Available
+                      </button>
+                      <span className="text-[10px] text-slate-400 block font-mono">
+                        {nextInterview.availability.formattedTimeLeft}
+                      </span>
+                    </div>
+                  ) : (
+                    <Link
+                      href="/student/interview/active"
+                      className="btn btn-primary text-xs py-3 px-6 font-bold flex items-center gap-2 shadow-lg shadow-orange-600/30 text-white"
+                    >
+                      <Play size={15} fill="currentColor" />
+                      <span>Start Interview Now</span>
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="card p-6 bg-slate-900 border border-slate-800 text-white rounded-2xl flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="text-[11px] font-bold text-orange-400 uppercase tracking-wider block">
+                NO IMMEDIATE SCHEDULED INTERVIEWS
               </span>
+              <h3 className="text-lg font-bold text-white m-0">
+                You have no pending mandatory batch interviews right now.
+              </h3>
+              <p className="text-xs text-slate-400 m-0">
+                Practice freely in the communication lab below or check upcoming rounds.
+              </p>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mb-1">
-              Welcome back, Aarav! 👋
-            </h1>
-            <p className="text-sm text-slate-300 max-w-xl">
-              Track your interview schedule, placement readiness gauge, AI voice interview scores, and curriculum track mastery.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <Link
-              href="/student/interview/active"
-              className="btn btn-primary text-xs py-2.5 px-5 font-bold shadow-md"
-            >
-              <Mic size={15} />
-              <span>Voice Interview Room</span>
-            </Link>
-            <Link
-              href="/student/interviews"
-              className="btn btn-outline text-xs py-2.5 px-4 font-bold bg-white/10 text-white border-white/20 hover:bg-white/20"
-            >
-              <Sparkles size={15} />
-              <span>View All Mocks</span>
+            <Link href="/student/interview/active" className="btn btn-primary text-xs py-2 px-4 font-bold">
+              Practice Voice Mock
             </Link>
           </div>
-        </div>
+        )}
 
-        {/* 4 Cards Grid - Including LinkTest Attendance Safety Gauge replicated as Interview Readiness Gauge */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Card 1: Interview Readiness Safety Gauge */}
-          <div
-            className="card p-5 bg-white border border-[#E2E8F0]"
-            style={{ borderLeft: `5px solid ${readinessColor}` }}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-[#64748B]">Interview Readiness</span>
-              <span
-                className="text-[10px] font-extrabold px-2 py-0.5 rounded"
-                style={{ background: readinessBg, color: readinessColor }}
-              >
-                {readinessScore >= 75 ? "Safe" : "Warning"}
-              </span>
-            </div>
-            <div className="text-3xl font-extrabold leading-tight" style={{ color: readinessColor }}>
-              {readinessScore}%
-            </div>
-            <div className="w-full h-1.5 bg-slate-200 rounded-full mt-2 overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(100, readinessScore)}%`, background: readinessColor }}
-              ></div>
-            </div>
-            <span className="text-[11px] text-[#64748B] mt-1.5 block font-medium">
-              {readinessStatus}
-            </span>
-          </div>
-
-          {/* Card 2: Today's Scheduled Mocks */}
-          <div className="card p-5 bg-white border border-[#E2E8F0]">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-[#64748B]">Scheduled Mocks</span>
-              <div className="p-1.5 rounded-lg bg-orange-50 text-orange-600">
-                <Calendar size={18} />
-              </div>
-            </div>
-            <div className="text-3xl font-extrabold text-[#0F172A] leading-tight">
-              {interviews.length || 1}
-            </div>
-            <span className="text-[11px] text-[#64748B] mt-1.5 block">
-              Upcoming technical voice round
-            </span>
-          </div>
-
-          {/* Card 3: Completed Scorecards */}
-          <div className="card p-5 bg-white border border-[#E2E8F0]">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-[#64748B]">Completed Scorecards</span>
-              <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
-                <CheckCircle2 size={18} />
-              </div>
-            </div>
-            <div className="text-3xl font-extrabold text-[#0F172A] leading-tight">3</div>
-            <span className="text-[11px] text-[#64748B] mt-1.5 block">
-              Verified by Rahul Sir & faculty
-            </span>
-          </div>
-
-          {/* Card 4: Enrolled Tracks */}
-          <div className="card p-5 bg-white border border-[#E2E8F0]">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-[#64748B]">Technology Track</span>
-              <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
-                <BookOpen size={18} />
-              </div>
-            </div>
-            <div className="text-3xl font-extrabold text-[#0F172A] leading-tight">Python FS</div>
-            <span className="text-[11px] text-[#64748B] mt-1.5 block">
-              Batch: Python Full Stack 2026-A
-            </span>
-          </div>
-        </div>
-
-        {/* Quick Tools & Learning Hub (Replicating LinkTest Quick Tools) */}
-        <div className="space-y-3">
-          <h3 className="text-base font-bold text-[#0F172A] m-0">
-            Quick Tools & Learning Hub
-          </h3>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <Link
-              href="/student/interview/active"
-              className="card p-4 text-center hover:shadow-md transition-all border border-[#E2E8F0] bg-white group"
-            >
-              <div className="p-2.5 rounded-xl bg-orange-50 text-orange-600 w-fit mx-auto mb-2 group-hover:scale-105 transition-transform">
-                <Mic size={20} />
-              </div>
-              <div className="font-bold text-xs text-[#0F172A]">Voice Room</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">Live AI Interview</div>
-            </Link>
-
-            <Link
-              href="/student/interviews"
-              className="card p-4 text-center hover:shadow-md transition-all border border-[#E2E8F0] bg-white group"
-            >
-              <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600 w-fit mx-auto mb-2 group-hover:scale-105 transition-transform">
-                <Sparkles size={20} />
-              </div>
-              <div className="font-bold text-xs text-[#0F172A]">Mock Tests</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">Assigned Rounds</div>
-            </Link>
-
-            <Link
-              href="/student/results"
-              className="card p-4 text-center hover:shadow-md transition-all border border-[#E2E8F0] bg-white group"
-            >
-              <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 w-fit mx-auto mb-2 group-hover:scale-105 transition-transform">
-                <FileCheck2 size={20} />
-              </div>
-              <div className="font-bold text-xs text-[#0F172A]">Scorecards</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">Feedback & Marks</div>
-            </Link>
-
-            <Link
-              href="/student/performance"
-              className="card p-4 text-center hover:shadow-md transition-all border border-[#E2E8F0] bg-white group"
-            >
-              <div className="p-2.5 rounded-xl bg-purple-50 text-purple-600 w-fit mx-auto mb-2 group-hover:scale-105 transition-transform">
-                <Target size={20} />
-              </div>
-              <div className="font-bold text-xs text-[#0F172A]">Mastery Radar</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">Topic Strengths</div>
-            </Link>
-
-            <Link
-              href="/student/materials"
-              className="card p-4 text-center hover:shadow-md transition-all border border-[#E2E8F0] bg-white group"
-            >
-              <div className="p-2.5 rounded-xl bg-amber-50 text-amber-600 w-fit mx-auto mb-2 group-hover:scale-105 transition-transform">
-                <BookOpen size={20} />
-              </div>
-              <div className="font-bold text-xs text-[#0F172A]">Prep Guides</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">Cheat Sheets</div>
-            </Link>
-
-            <Link
-              href="/admin/question-bank"
-              className="card p-4 text-center hover:shadow-md transition-all border border-[#E2E8F0] bg-white group"
-            >
-              <div className="p-2.5 rounded-xl bg-slate-100 text-slate-700 w-fit mx-auto mb-2 group-hover:scale-105 transition-transform">
-                <Code size={20} />
-              </div>
-              <div className="font-bold text-xs text-[#0F172A]">Question Lab</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">Curriculum Bank</div>
-            </Link>
-          </div>
-        </div>
-
-        {/* Available Mock Interviews & Screenings Grid */}
+        {/* D. UPCOMING INTERVIEWS SECTION */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <div>
-              <span className="text-[11px] font-bold text-orange-600 uppercase tracking-wider block">
-                ASSESSMENTS & SCREENINGS
-              </span>
-              <h2 className="text-xl font-extrabold text-[#0F172A] m-0">
-                Available AI Mock Interviews
-              </h2>
+            <div className="flex items-center gap-2">
+              <Calendar size={16} className="text-orange-600" />
+              <h3 className="text-base font-extrabold text-[#0F172A] m-0">
+                Upcoming Assigned Interviews
+              </h3>
             </div>
             <Link
               href="/student/interviews"
               className="text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1"
             >
-              <span>View All Mocks</span>
-              <ArrowRight size={14} />
+              <span>View All</span>
+              <ChevronRight size={14} />
             </Link>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {/* Card 1 */}
-            <div className="card p-5 bg-white border border-[#E2E8F0] flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200 uppercase">
-                    Python
-                  </span>
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700">
-                    Voice & Audio
-                  </span>
-                </div>
-
-                <h3 className="font-bold text-base text-[#0F172A] mb-1">
-                  Python Full Stack Technical Screening
-                </h3>
-                <p className="text-xs text-slate-600 line-clamp-2 mb-4">
-                  Evaluates memory management, GIL, generators, decorators, and asynchronous programming.
-                </p>
-
-                <div className="grid grid-cols-2 gap-2 bg-[#F8FAFC] p-3 rounded-lg text-xs text-slate-600 mb-4 border border-[#E2E8F0]">
-                  <div>⏱ Duration: <strong>30 mins</strong></div>
-                  <div>🎯 Level: <strong>Intermediate</strong></div>
-                  <div>❓ Questions: <strong>3 Turns</strong></div>
-                  <div>🎙 Voice Mode: <strong>Active</strong></div>
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-[#E2E8F0]">
-                <Link
-                  href="/student/interview/active"
-                  className="btn btn-primary btn-sm w-full font-bold text-xs py-2 justify-center"
-                >
-                  <Mic size={14} />
-                  <span>Start Voice Mock Interview</span>
-                </Link>
-              </div>
+          {upcomingInterviews.length === 0 ? (
+            <div className="p-8 rounded-2xl bg-white border border-[#E2E8F0] text-center space-y-2">
+              <Calendar size={32} className="text-slate-300 mx-auto" />
+              <h4 className="text-sm font-bold text-slate-800 m-0">No upcoming interviews scheduled</h4>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto m-0">
+                When your trainers assign a new technical or HR mock round for your batch, it will appear here chronologically.
+              </p>
             </div>
-
-            {/* Card 2 */}
-            <div className="card p-5 bg-white border border-[#E2E8F0] flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 uppercase">
-                    Java
-                  </span>
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">
-                    Completed
-                  </span>
-                </div>
-
-                <h3 className="font-bold text-base text-[#0F172A] mb-1">
-                  Java Enterprise Systems & JVM Internals
-                </h3>
-                <p className="text-xs text-slate-600 line-clamp-2 mb-4">
-                  Concurrency, ConcurrentHashMap internal CAS mechanisms, and multi-threaded deadlocks.
-                </p>
-
-                <div className="grid grid-cols-2 gap-2 bg-[#F8FAFC] p-3 rounded-lg text-xs text-slate-600 mb-4 border border-[#E2E8F0]">
-                  <div>⏱ Duration: <strong>45 mins</strong></div>
-                  <div>🎯 Score: <strong>93% (Passed)</strong></div>
-                  <div>❓ Questions: <strong>3 Turns</strong></div>
-                  <div>👨‍🏫 Evaluated: <strong>Rahul Sir</strong></div>
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-[#E2E8F0]">
-                <Link
-                  href="/student/interview/int-2026-002/report"
-                  className="btn btn-outline btn-sm w-full font-bold text-xs py-2 justify-center"
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {upcomingInterviews.map((item) => (
+                <div
+                  key={item.id}
+                  className="card p-4.5 bg-white border border-[#E2E8F0] hover:border-slate-300 transition-all rounded-2xl flex flex-col justify-between space-y-3"
                 >
-                  <FileCheck2 size={14} />
-                  <span>View Official Scorecard</span>
-                </Link>
-              </div>
-            </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                        {item.interviewType?.toUpperCase() || "TECHNICAL"}
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-500 font-semibold">
+                        ~{item.durationMinutes || 30} mins
+                      </span>
+                    </div>
 
-            {/* Card 3 */}
-            <div className="card p-5 bg-white border border-[#E2E8F0] flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
-                    DSA
-                  </span>
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-700">
-                    In Review
-                  </span>
+                    <h4 className="text-sm font-bold text-[#0F172A] leading-snug m-0">
+                      {item.technology} Technical Mock
+                    </h4>
+
+                    <div className="space-y-1 text-xs text-slate-500">
+                      <div className="flex items-center gap-1.5">
+                        <Calendar size={12} className="text-slate-400" />
+                        <span>{new Date(item.scheduledAt).toLocaleDateString()}</span>
+                        <span>•</span>
+                        <span>{new Date(item.scheduledAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Assigned by {item.trainerName}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded">
+                      {item.availability?.formattedTimeLeft || "Scheduled"}
+                    </span>
+                    <Link
+                      href="/student/interview/active"
+                      className="text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-0.5"
+                    >
+                      <span>Join Room</span>
+                      <ArrowRight size={13} />
+                    </Link>
+                  </div>
                 </div>
-
-                <h3 className="font-bold text-base text-[#0F172A] mb-1">
-                  DSA & Algorithmic Problem Solving
-                </h3>
-                <p className="text-xs text-slate-600 line-clamp-2 mb-4">
-                  Kadane's algorithm, Dijkstra vs Bellman-Ford negative edge weights, and Bloom filters.
-                </p>
-
-                <div className="grid grid-cols-2 gap-2 bg-[#F8FAFC] p-3 rounded-lg text-xs text-slate-600 mb-4 border border-[#E2E8F0]">
-                  <div>⏱ Duration: <strong>30 mins</strong></div>
-                  <div>🎯 Level: <strong>Intermediate</strong></div>
-                  <div>❓ Turns: <strong>3 Turns</strong></div>
-                  <div>⏳ Status: <strong>Pending Review</strong></div>
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-[#E2E8F0]">
-                <Link
-                  href="/student/interview/int-2026-003/report"
-                  className="btn btn-outline btn-sm w-full font-bold text-xs py-2 justify-center"
-                >
-                  <Clock size={14} />
-                  <span>View Evaluation Status</span>
-                </Link>
-              </div>
+              ))}
             </div>
-          </div>
+          )}
         </div>
 
-        {/* Recent Scorecards & Outcomes */}
-        <div className="card p-5 bg-white border border-[#E2E8F0] space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-[#E2E8F0]">
-            <div>
-              <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wider block">
-                SCORECARDS & OUTCOMES
-              </span>
+        {/* E. MY INTERVIEW HISTORY (Compact & Clean) */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FileText size={16} className="text-emerald-600" />
               <h3 className="text-base font-extrabold text-[#0F172A] m-0">
-                Latest Interview Scorecards
+                Completed Interview History
               </h3>
             </div>
-            <Link href="/student/results" className="text-xs font-bold text-blue-600 hover:underline">
-              View All Results →
+            <Link
+              href="/student/results"
+              className="text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1"
+            >
+              <span>All Scorecards</span>
+              <ChevronRight size={14} />
             </Link>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="p-4 rounded-xl border border-blue-200 bg-blue-50/20 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="badge badge-success text-[10px]">RELEASED</span>
-                <span className="text-xs font-extrabold text-blue-700">JAVA TECHNICAL</span>
+          {completedInterviews.length === 0 ? (
+            <div className="p-6 rounded-2xl bg-white border border-[#E2E8F0] text-center text-xs text-slate-500">
+              No completed interviews yet. Completed mock scorecards will be archived here.
+            </div>
+          ) : (
+            <div className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden shadow-sm">
+              <div className="divide-y divide-slate-100">
+                {completedInterviews.map((item) => (
+                  <div
+                    key={item.id}
+                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/60 transition-colors"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-slate-900">
+                          {item.technology} Technical Mock Round
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
+                          {item.interviewType || "Technical"}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-500 flex items-center gap-2">
+                        <span>Completed {new Date(item.scheduledAt).toLocaleDateString()}</span>
+                        <span>•</span>
+                        <span>Evaluated by AI Engine & {item.trainerName}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4 self-end sm:self-auto">
+                      <div className="text-right">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Score</span>
+                        <span className="text-base font-extrabold text-emerald-600 font-mono">
+                          {item.scorecard?.overallScore || 86}%
+                        </span>
+                      </div>
+
+                      <Link
+                        href="/student/results"
+                        className="btn btn-outline btn-sm text-xs py-1.5 px-3 font-bold border-slate-300 text-slate-700 hover:bg-slate-100"
+                      >
+                        View Report
+                      </Link>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <h4 className="font-bold text-sm text-slate-900 m-0">
-                Java Enterprise Systems 2026-B
-              </h4>
-              <div className="flex items-center justify-between text-xs pt-2 border-t border-blue-100">
-                <span className="text-slate-600">Overall Score:</span>
-                <span className="text-base font-extrabold text-emerald-600">93% (Passed)</span>
+            </div>
+          )}
+        </div>
+
+        {/* F. FREE COMMUNICATION INTERVIEWS PRACTICE SECTION (Part 2.1.F) */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <Mic size={16} className="text-orange-600" />
+                <h3 className="text-base font-extrabold text-[#0F172A] m-0">
+                  Practice Your Communication Skills
+                </h3>
               </div>
-              <Link
-                href="/student/interview/int-2026-002/report"
-                className="btn btn-primary btn-sm w-full text-xs py-1.5 justify-center font-bold"
-              >
-                Inspect Scorecard & Remarks
-              </Link>
+              <p className="text-xs text-slate-500 m-0">
+                On-demand free practice sessions designed to improve verbal fluency, self-introduction, and behavioral confidence.
+              </p>
             </div>
 
-            <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="badge badge-warning text-[10px]">UNDER REVIEW</span>
-                <span className="text-xs font-extrabold text-slate-700">DSA CODING</span>
-              </div>
-              <h4 className="font-bold text-sm text-slate-900 m-0">
-                DSA & Systems Placement Track
-              </h4>
-              <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100">
-                <span className="text-slate-600">Current Status:</span>
-                <span className="font-bold text-amber-700">Awaiting Trainer Remarks</span>
-              </div>
-              <Link
-                href="/student/interview/int-2026-003/report"
-                className="btn btn-outline btn-sm w-full text-xs py-1.5 justify-center font-semibold"
+            <Link
+              href="/student/practice"
+              className="text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1"
+            >
+              <span>Practice Lab</span>
+              <ChevronRight size={14} />
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {freeTracks.map((item) => (
+              <div
+                key={item.id}
+                className="card p-4.5 bg-white border border-[#E2E8F0] hover:border-orange-300 hover:shadow-sm transition-all rounded-2xl flex flex-col justify-between space-y-3"
               >
-                Inspect Transcript
-              </Link>
-            </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                      {item.category}
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      {item.freeAttemptsRemaining} Free Attempts Left
+                    </span>
+                  </div>
+
+                  <h4 className="text-sm font-bold text-[#0F172A] leading-snug m-0">
+                    {item.title}
+                  </h4>
+                  <p className="text-xs text-slate-500 leading-relaxed m-0 line-clamp-2">
+                    {item.description}
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    ~{item.durationMinutes} mins
+                  </span>
+                  <Link
+                    href="/student/interview/active"
+                    className="btn btn-primary btn-sm text-[11px] py-1.5 px-3 font-bold flex items-center gap-1"
+                  >
+                    <span>Start Practice</span>
+                    <ArrowRight size={12} />
+                  </Link>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
