@@ -2,7 +2,8 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Lock, Mail, ShieldAlert, Sparkles, CheckCircle2, ShieldCheck, User, Users } from "lucide-react";
+import { ArrowRight, Lock, Mail, ShieldAlert, Sparkles, CheckCircle2, ShieldCheck } from "lucide-react";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -10,6 +11,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [googleModalOpen, setGoogleModalOpen] = useState(false);
+  const [googleInputEmail, setGoogleInputEmail] = useState("");
 
   const performLogin = async (loginEmail: string, loginPassword?: string, isGoogle = false) => {
     setLoading(true);
@@ -31,7 +34,7 @@ export default function LoginPage() {
         throw new Error(data.error || "Authentication failed. Please verify credentials.");
       }
 
-      // Persist auth token/user details in localStorage for client state
+      // Persist auth details in localStorage for client state
       if (typeof window !== "undefined") {
         localStorage.setItem("linktest_current_user", JSON.stringify(data.user));
         localStorage.setItem("linktest_current_role", data.role);
@@ -54,23 +57,42 @@ export default function LoginPage() {
     performLogin(email, password, false);
   };
 
-  const handleGoogleSignIn = () => {
-    // In production, triggers Supabase / Google OAuth redirect.
-    // In local demo/testing, prompts or defaults to a Google student session.
-    const googleEmail = prompt(
-      "Enter your Google Account email to sign in:\n(Any Gmail ID automatically enters as Student. Admin emails enter as Admin)",
-      "student.interviewx@gmail.com"
-    );
-    if (googleEmail) {
-      performLogin(googleEmail, undefined, true);
+  const handleGoogleSignInClick = async () => {
+    setError(null);
+    if (isSupabaseConfigured) {
+      try {
+        setLoading(true);
+        const { error: oauthErr } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined,
+            queryParams: {
+              access_type: "offline",
+              prompt: "select_account",
+            },
+          },
+        });
+        if (oauthErr) {
+          console.warn("Supabase OAuth note:", oauthErr.message);
+          setGoogleModalOpen(true);
+        }
+      } catch (err) {
+        console.warn("OAuth fallback note:", err);
+        setGoogleModalOpen(true);
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // Local fallback dialog for Google account sign-in
+      setGoogleModalOpen(true);
     }
   };
 
-  // Quick preset helper for development/testing
-  const fillPreset = (presetEmail: string, presetPass: string) => {
-    setEmail(presetEmail);
-    setPassword(presetPass);
-    setError(null);
+  const handleGoogleModalSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!googleInputEmail.trim()) return;
+    setGoogleModalOpen(false);
+    performLogin(googleInputEmail.trim(), undefined, true);
   };
 
   return (
@@ -87,7 +109,7 @@ export default function LoginPage() {
             L
           </div>
           <h1 className="text-2xl font-extrabold text-[#0F172A] tracking-tight">
-            Link<span className="text-[#F97316]">Test</span>
+            Link<span className="text-[#F97316]">View</span>
           </h1>
           <p className="text-xs text-[#64748B] font-medium">
             AI Mock Interview & Placement Preparation Platform
@@ -108,7 +130,7 @@ export default function LoginPage() {
         {/* 1. Primary Auth: Continue with Google */}
         <button
           type="button"
-          onClick={handleGoogleSignIn}
+          onClick={handleGoogleSignInClick}
           disabled={loading}
           className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-800 transition-all shadow-sm active:scale-[0.99] disabled:opacity-50"
         >
@@ -133,20 +155,16 @@ export default function LoginPage() {
           <span>Continue with Google</span>
         </button>
 
-        <div className="text-[11px] text-center text-slate-500">
-          All new Google accounts securely enter as <strong className="text-orange-600">Student</strong>
-        </div>
-
         {/* Divider */}
         <div className="flex items-center gap-3">
           <div className="flex-1 h-px bg-slate-200"></div>
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-            or sign in with institute email
+            or sign in with email
           </span>
           <div className="flex-1 h-px bg-slate-200"></div>
         </div>
 
-        {/* 2. Institute Email / Admin Password Form */}
+        {/* 2. Normal Email & Password Form */}
         <form onSubmit={handleEmailSubmit} className="space-y-4">
           <div className="form-group space-y-1">
             <label className="form-label text-xs font-semibold text-slate-700 flex items-center gap-1.5">
@@ -156,7 +174,7 @@ export default function LoginPage() {
             <input
               type="email"
               required
-              placeholder="e.g. rahul.sir@linktest.io or student@college.edu"
+              placeholder="e.g. yourname@college.edu or institute email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="form-input text-xs w-full py-2.5 px-3 rounded-xl border border-slate-300 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
@@ -175,7 +193,7 @@ export default function LoginPage() {
             </div>
             <input
               type="password"
-              placeholder="Enter password"
+              placeholder="Enter your account password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="form-input text-xs font-mono w-full py-2.5 px-3 rounded-xl border border-slate-300 focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
@@ -187,47 +205,58 @@ export default function LoginPage() {
             disabled={loading}
             className="btn btn-primary w-full text-xs py-2.5 font-bold shadow-md justify-center rounded-xl bg-orange-600 hover:bg-orange-700 text-white flex items-center gap-2 transition-all active:scale-[0.99] disabled:opacity-50"
           >
-            <span>{loading ? "Authenticating..." : "Sign In to LinkTest"}</span>
+            <span>{loading ? "Authenticating..." : "Sign In"}</span>
             <ArrowRight size={14} />
           </button>
         </form>
 
-        {/* Rapid Test Account Fillers */}
-        <div className="pt-2 border-t border-slate-100 space-y-2">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block text-center">
-            Quick Fill Demo Accounts:
-          </span>
-          <div className="grid grid-cols-3 gap-1.5">
-            <button
-              type="button"
-              onClick={() => fillPreset("rahul.sir@linktest.io", "RahulSir@2026")}
-              className="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition-colors"
-            >
-              Rahul Sir (Admin)
-            </button>
-            <button
-              type="button"
-              onClick={() => fillPreset("priya.nambiar@linktest.io", "Trainer@2026")}
-              className="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors"
-            >
-              Trainer Priya
-            </button>
-            <button
-              type="button"
-              onClick={() => fillPreset("aarav.sharma@linktest.io", "Student@2026")}
-              className="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100 transition-colors"
-            >
-              Student Aarav
-            </button>
-          </div>
-        </div>
-
-        {/* Institutional Contact Footer */}
-        <div className="text-center text-[11px] text-slate-500 pt-2 border-t border-slate-100">
-          <span>Trainer access requires promotion by </span>
-          <strong className="text-slate-800">Rahul Sir (Founder & Admin)</strong>
+        {/* Secure Architecture Note */}
+        <div className="text-center text-[11px] text-slate-400 pt-2 border-t border-slate-100 flex items-center justify-center gap-1.5">
+          <ShieldCheck size={14} className="text-emerald-600" />
+          <span>Role and portal access are securely authorized by backend credentials</span>
         </div>
       </div>
+
+      {/* Clean Modal for Google Sign-In Fallback */}
+      {googleModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content max-w-sm p-6 bg-white rounded-2xl shadow-2xl space-y-4">
+            <div className="text-center space-y-1">
+              <h3 className="text-base font-extrabold text-slate-900 m-0">Sign in with Google</h3>
+              <p className="text-xs text-slate-500 m-0">
+                Enter your Google Account email. All new accounts securely enter as Students.
+              </p>
+            </div>
+
+            <form onSubmit={handleGoogleModalSubmit} className="space-y-3">
+              <input
+                type="email"
+                required
+                placeholder="you@gmail.com"
+                value={googleInputEmail}
+                onChange={(e) => setGoogleInputEmail(e.target.value)}
+                className="w-full text-xs py-2.5 px-3 rounded-xl border border-slate-300 focus:border-orange-500 focus:outline-none"
+              />
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setGoogleModalOpen(false)}
+                  className="btn btn-outline text-xs py-2 px-3 font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary text-xs py-2 px-4 font-bold"
+                >
+                  Continue
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

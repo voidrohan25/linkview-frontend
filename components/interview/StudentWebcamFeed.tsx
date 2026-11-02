@@ -109,22 +109,33 @@ export function StudentWebcamFeed({
 
       video.srcObject = stream;
       video.muted = true;
+      video.playsInline = true;
 
-      const playPromise = video.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            setCameraActive(true);
-            setCameraLoading(false);
-            setCameraError(null);
-            onCameraStatusChange?.(true);
-            onStreamReady?.(stream);
-          })
-          .catch((err) => {
-            console.warn("Webcam play warning:", err);
-            setCameraLoading(false);
-            setCameraActive(true);
-          });
+      const playVideo = () => {
+        const playPromise = video.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              setCameraActive(true);
+              setCameraLoading(false);
+              setCameraError(null);
+              onCameraStatusChange?.(true);
+              onStreamReady?.(stream);
+            })
+            .catch((err) => {
+              console.warn("Webcam play warning:", err);
+              setCameraActive(true);
+              setCameraLoading(false);
+            });
+        }
+      };
+
+      if (video.readyState >= 2) {
+        playVideo();
+      } else {
+        video.onloadedmetadata = () => {
+          playVideo();
+        };
       }
 
       stream.getVideoTracks().forEach((track) => {
@@ -143,7 +154,7 @@ export function StudentWebcamFeed({
       const timer = setTimeout(() => {
         setCameraLoading(false);
         setCameraActive(true);
-      }, 1000);
+      }, 1500);
 
       return () => clearTimeout(timer);
     },
@@ -222,7 +233,8 @@ export function StudentWebcamFeed({
     }
 
     return () => {
-      if (streamRef.current && streamRef.current !== externalStream) {
+      // Do not stop tracks if stream was shared with parent via onStreamReady or externalStream
+      if (streamRef.current && !onStreamReady && streamRef.current !== externalStream) {
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       }

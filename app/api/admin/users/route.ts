@@ -4,6 +4,8 @@ import {
   addPlatformUser,
   updatePlatformUserStatus,
   createTrainerInvitation,
+  promoteStudentToTrainer,
+  demoteTrainerToStudent,
   PlatformUser,
 } from '@/lib/usersStore';
 
@@ -101,12 +103,34 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
-    const { userId, status } = await req.json();
-    const user = updatePlatformUserStatus(userId, status);
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+    const body = await req.json();
+    const { userId, action, status, batchCodes } = body;
+
+    if (action === 'promote_to_trainer') {
+      const success = promoteStudentToTrainer(userId, batchCodes || []);
+      if (!success) {
+        return NextResponse.json({ success: false, error: 'User not found or cannot be promoted' }, { status: 400 });
+      }
+      return NextResponse.json({ success: true, message: 'User successfully promoted to Trainer' });
     }
-    return NextResponse.json({ success: true, data: user });
+
+    if (action === 'demote_to_student') {
+      const success = demoteTrainerToStudent(userId);
+      if (!success) {
+        return NextResponse.json({ success: false, error: 'User not found or cannot be demoted' }, { status: 400 });
+      }
+      return NextResponse.json({ success: true, message: 'User successfully demoted to Student' });
+    }
+
+    if (status) {
+      const user = updatePlatformUserStatus(userId, status);
+      if (!user) {
+        return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+      }
+      return NextResponse.json({ success: true, data: user });
+    }
+
+    return NextResponse.json({ success: false, error: 'Invalid action or parameters' }, { status: 400 });
   } catch (err: unknown) {
     const error = err as Error;
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

@@ -474,10 +474,19 @@ export function VoiceInterviewRoom({
     }
   };
 
+  // Ensure camera hardware tracks cleanly shut down when candidate exits the room
+  useEffect(() => {
+    return () => {
+      if (sharedStream) {
+        sharedStream.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [sharedStream]);
+
   // Handle computer vision detection from StudentWebcamFeed
   const handleDetectionUpdate = useCallback(
     (result: ProctoringDetectionResult) => {
-      if (preflightOpen || completed) return;
+      if (preflightOpen || completed || !cameraActive) return;
 
       if (!result.faceDetected) {
         reportProctoringFlag(

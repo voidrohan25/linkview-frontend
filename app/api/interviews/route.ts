@@ -186,26 +186,23 @@ export async function PUT(req: Request) {
       session.proctoringEvents = proctoringEvents;
     }
 
-    // 1. Attempt live LLM evaluation
-    let score: number = 7;
-    let feedback: string = '';
+    // 1. Evaluate with LLM or Semantic Rubric Engine
+    const matchingQ = interviewStore.getQuestionBank().find(
+      (q) =>
+        q.question.toLowerCase().includes(session.currentQuestion.slice(0, 30).toLowerCase()) ||
+        session.currentQuestion.toLowerCase().includes(q.question.slice(0, 30).toLowerCase())
+    );
+    const expectedKeypoints = matchingQ?.expectedKeypoints || [];
 
-    const llmEvaluation = await evaluateAIInterviewAnswer(
+    const evaluation = await evaluateAIInterviewAnswer(
       session.currentQuestion,
       answer,
-      normalizedTrack
+      normalizedTrack,
+      expectedKeypoints
     );
 
-    if (llmEvaluation) {
-      score = Math.min(10, Math.max(1, Number(llmEvaluation.score)));
-      feedback = llmEvaluation.feedback;
-    } else {
-      // Heuristic fallback
-      score = Math.min(10, Math.max(5, Math.floor(answer.length / 25) + 5));
-      feedback = answer.length > 50
-        ? 'Good technical clarity and structured explanation. Keep in mind edge-case boundary conditions.'
-        : 'Answer is brief. Try elaborating on runtime complexity and concrete architectural trade-offs.';
-    }
+    const score = evaluation.score;
+    const feedback = evaluation.feedback;
 
     const turnData = {
       turn: currentTurn,
@@ -213,6 +210,11 @@ export async function PUT(req: Request) {
       studentAnswer: answer,
       feedback,
       score,
+      evaluationDetails: {
+        technicalAccuracy: evaluation.technicalAccuracy,
+        conceptualDepth: evaluation.conceptualDepth,
+        communication: evaluation.communication,
+      },
     };
 
     session.history.push(turnData);
@@ -227,7 +229,7 @@ export async function PUT(req: Request) {
       }
       session.currentQuestion = nextQuestion;
     } else {
-      // Completed session
+      // Completed session - Authoritative Weighted Rubric Calculation
       const avg = Math.round(
         (session.history.reduce((a: number, b: any) => a + b.score, 0) / session.history.length) * 10
       );
@@ -249,29 +251,21 @@ export async function PUT(req: Request) {
       session.status = 'completed';
       session.finalFeedback = {
         overallScore: avg,
-        strengths: [
-          'Sound conceptual foundation in systems and algorithmic trade-offs',
-          'Structured verbal articulation and logical clarity',
-        ],
-        improvements: [
-          'Incorporate exact asymptotic space and cache locality in explanations',
-          'Highlight concrete production debugging techniques',
-        ],
-        summary: 'Strong technical performance suitable for tier-1 software engineering placement rounds.',
+        strengths: evaluation.strengths,
+        improvements: evaluation.weaknesses,
+        summary: `Technical assessment completed with an overall score of ${avg}%. Candidate demonstrated structured conceptual thinking.`,
       };
+
       session.scorecard = {
         overallScore: avg,
-        technicalAccuracy: Math.min(100, avg + 2),
-        conceptualUnderstanding: Math.max(50, avg - 1),
-        communication: Math.min(95, avg + 1),
-        problemSolving: Math.max(60, avg - 2),
-        strengths: session.finalFeedback.strengths,
-        weaknesses: session.finalFeedback.improvements,
-        recommendations: [
-          'Review framework lifecycle optimizations',
-          'Practice edge-case handling on system boundary conditions',
-        ],
-        aiFeedback: session.finalFeedback.summary,
+        technicalAccuracy: evaluation.technicalAccuracy,
+        conceptualUnderstanding: evaluation.conceptualDepth,
+        communication: evaluation.communication,
+        problemSolving: evaluation.completeness,
+        strengths: evaluation.strengths,
+        weaknesses: evaluation.weaknesses,
+        recommendations: evaluation.recommendations,
+        aiFeedback: evaluation.feedback,
         evaluatedAt: new Date().toISOString(),
         proctoringSummary: {
           totalFlags,
