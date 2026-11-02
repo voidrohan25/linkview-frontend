@@ -1,0 +1,354 @@
+/**
+ * LinkTest Platform - Authoritative User & Role Store
+ * Enforces strict role boundaries:
+ * - Fixed Admin (controlled via ADMIN_EMAIL / ADMIN_PASSWORD)
+ * - All Google Sign-in accounts default strictly to 'student'
+ * - Only Admin can promote a Student to 'trainer' or demote back to 'student'
+ * - Clean initial state (no dummy/fake records)
+ */
+
+export interface PlatformUser {
+  id: string;
+  fullName: string;
+  email: string;
+  role: 'super_admin' | 'trainer' | 'student';
+  status: 'active' | 'suspended';
+  batchCode?: string;
+  joinedAt: string;
+  avatarUrl?: string;
+}
+
+export interface TrainerRecord {
+  id: string;
+  email: string;
+  fullName: string;
+  status: 'active' | 'suspended' | 'invited';
+  batchCodes: string[];
+  promotedAt: string;
+  promotedBy: string;
+}
+
+interface GlobalUsersState {
+  users: PlatformUser[];
+  trainers: TrainerRecord[];
+}
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __linkTestUsersState: GlobalUsersState | undefined;
+}
+
+// Configured Admin email addresses from environment
+export const ADMIN_EMAILS: string[] = [
+  (process.env.ADMIN_EMAIL || 'rahul.sir@linktest.io').trim().toLowerCase(),
+  (process.env.SUPER_ADMIN_EMAIL_1 || 'admin.linktest@gmail.com').trim().toLowerCase(),
+  (process.env.SUPER_ADMIN_EMAIL_2 || 'superadmin.linktest@gmail.com').trim().toLowerCase(),
+].filter(Boolean);
+
+export const ADMIN_DEFAULT_PASSWORD = process.env.ADMIN_PASSWORD || 'RahulSir@2026';
+
+function initUsersState(): GlobalUsersState {
+  // Clean initialization: ONLY configured admin accounts, NO fake examinees
+  const initialUsers: PlatformUser[] = [
+    {
+      id: 'admin-lead',
+      fullName: 'Rahul Sir (Founder & Admin)',
+      email: ADMIN_EMAILS[0],
+      role: 'super_admin',
+      status: 'active',
+      batchCode: 'GLOBAL',
+      joinedAt: new Date().toISOString(),
+    },
+  ];
+
+  return {
+    users: initialUsers,
+    trainers: [],
+  };
+}
+
+if (!globalThis.__linkTestUsersState) {
+  globalThis.__linkTestUsersState = initUsersState();
+}
+
+const state = globalThis.__linkTestUsersState;
+
+export function getAllUsers(): PlatformUser[] {
+  return state.users;
+}
+
+export function getUserById(id: string): PlatformUser | undefined {
+  return state.users.find((u) => u.id === id);
+}
+
+export function getUserByEmail(email: string): PlatformUser | undefined {
+  const norm = email.trim().toLowerCase();
+  return state.users.find((u) => u.email.toLowerCase() === norm);
+}
+
+/**
+ * Register or login a Google user.
+ * STRICT REQUIREMENT: Every new Google account MUST initially receive the 'student' role.
+ */
+export function getOrCreateGoogleUser(params: {
+  email: string;
+  fullName: string;
+  avatarUrl?: string;
+}): PlatformUser {
+  const norm = params.email.trim().toLowerCase();
+
+  // If this email is the configured fixed Admin, grant admin
+  if (ADMIN_EMAILS.includes(norm)) {
+    let existing = state.users.find((u) => u.email.toLowerCase() === norm);
+    if (!existing) {
+      existing = {
+        id: `admin-${Date.now()}`,
+        fullName: params.fullName || 'Administrator',
+        email: norm,
+        role: 'super_admin',
+        status: 'active',
+        batchCode: 'GLOBAL',
+        joinedAt: new Date().toISOString(),
+        avatarUrl: params.avatarUrl,
+      };
+      state.users.unshift(existing);
+    }
+    return existing;
+  }
+
+  // Check if user already exists
+  const existing = state.users.find((u) => u.email.toLowerCase() === norm);
+  if (existing) {
+    // Return existing account preserving its role (if Admin previously promoted them)
+    return existing;
+  }
+
+  // NEW Google Account: MUST ALWAYS BE 'student'
+  const newUser: PlatformUser = {
+    id: `stu-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    fullName: params.fullName || norm.split('@')[0],
+    email: norm,
+    role: 'student', // STRICT DEFAULT
+    status: 'active',
+    joinedAt: new Date().toISOString(),
+    avatarUrl: params.avatarUrl,
+  };
+
+  state.users.push(newUser);
+  return newUser;
+}
+
+/**
+ * Admin action: Promote Student to Trainer
+ */
+export function promoteStudentToTrainer(userId: string, batchCodes: string[] = []): boolean {
+  const user = state.users.find((u) => u.id === userId);
+  if (!user || user.role === 'super_admin') return false;
+
+  user.role = 'trainer';
+  
+  // Record in trainer roster
+  const existingTrainer = state.trainers.find((t) => t.email.toLowerCase() === user.email.toLowerCase());
+  if (existingTrainer) {
+    existingTrainer.status = 'active';
+    existingTrainer.batchCodes = batchCodes;
+  } else {
+    state.trainers.push({
+      id: `tr-${Date.now()}`,
+      email: user.email,
+      fullName: user.fullName,
+      status: 'active',
+      batchCodes,
+      promotedAt: new Date().toISOString(),
+      promotedBy: 'Admin',
+    });
+  }
+
+  return true;
+}
+
+/**
+ * Admin action: Demote Trainer back to Student
+ */
+export function demoteTrainerToStudent(userId: string): boolean {
+  const user = state.users.find((u) => u.id === userId);
+  if (!user || user.role === 'super_admin') return false;
+
+  user.role = 'student';
+  const trainerIdx = state.trainers.findIndex((t) => t.email.toLowerCase() === user.email.toLowerCase());
+  if (trainerIdx !== -1) {
+    state.trainers.splice(trainerIdx, 1);
+  }
+
+  return true;
+}
+
+/**
+ * Admin action: Toggle user account status (active/suspended)
+ */
+export function toggleUserStatus(userId: string, status: 'active' | 'suspended'): boolean {
+  const user = state.users.find((u) => u.id === userId);
+  if (!user || user.role === 'super_admin') return false;
+
+  user.status = status;
+  const trainer = state.trainers.find((t) => t.email.toLowerCase() === user.email.toLowerCase());
+  if (trainer) {
+    trainer.status = status;
+  }
+  return true;
+}
+
+export function getAllTrainers(): TrainerRecord[] {
+  return state.trainers;
+}
+
+export function findTrainerByEmail(email: string): TrainerRecord | undefined {
+  const norm = email.trim().toLowerCase();
+  return state.trainers.find((t) => t.email.toLowerCase() === norm);
+}
+
+// Backwards compatibility helper for existing test suites
+export function inviteTrainerByAdmin(params: {
+  email: string;
+  fullName: string;
+  batchCodes?: string[];
+}): { success: boolean; inviteToken: string } {
+  const token = `inv_tr_${Math.random().toString(36).slice(2, 10)}`;
+  const norm = params.email.trim().toLowerCase();
+  
+  // Check if exists
+  let user = state.users.find((u) => u.email.toLowerCase() === norm);
+  if (!user) {
+    user = {
+      id: `tr-user-${Date.now()}`,
+      fullName: params.fullName,
+      email: norm,
+      role: 'trainer',
+      status: 'active',
+      batchCode: params.batchCodes?.[0],
+      joinedAt: new Date().toISOString(),
+    };
+    state.users.push(user);
+  } else {
+    user.role = 'trainer';
+  }
+
+  state.trainers.push({
+    id: `tr-${Date.now()}`,
+    email: norm,
+    fullName: params.fullName,
+    status: 'active',
+    batchCodes: params.batchCodes || ['PYAI2026'],
+    promotedAt: new Date().toISOString(),
+    promotedBy: 'Admin',
+  });
+
+  return { success: true, inviteToken: token };
+}
+
+export function addPlatformUser(params: {
+  fullName: string;
+  email: string;
+  role: 'super_admin' | 'trainer' | 'student';
+  status?: 'active' | 'suspended';
+  batchCode?: string;
+}): PlatformUser {
+  const norm = params.email.trim().toLowerCase();
+  const existing = state.users.find((u) => u.email.toLowerCase() === norm);
+  if (existing) {
+    existing.fullName = params.fullName || existing.fullName;
+    existing.role = params.role || existing.role;
+    if (params.batchCode) existing.batchCode = params.batchCode;
+    return existing;
+  }
+
+  const newUser: PlatformUser = {
+    id: `usr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    fullName: params.fullName,
+    email: norm,
+    role: params.role,
+    status: params.status || 'active',
+    batchCode: params.batchCode || 'GLOBAL',
+    joinedAt: new Date().toISOString(),
+  };
+
+  state.users.push(newUser);
+  return newUser;
+}
+
+export function updatePlatformUserStatus(userId: string, status: 'active' | 'suspended'): PlatformUser | undefined {
+  const user = state.users.find((u) => u.id === userId);
+  if (!user) return undefined;
+  user.status = status;
+  const tr = state.trainers.find((t) => t.email.toLowerCase() === user.email.toLowerCase());
+  if (tr) {
+    tr.status = status;
+  }
+  return user;
+}
+
+export function createTrainerInvitation(params: {
+  fullName: string;
+  email: string;
+  batchCode?: string;
+  baseUrl?: string;
+}): {
+  user: PlatformUser;
+  trainer: TrainerRecord;
+  inviteLink: string;
+  inviteToken: string;
+} {
+  const token = `inv_tr_${Math.random().toString(36).slice(2, 10)}`;
+  const norm = params.email.trim().toLowerCase();
+  const base = params.baseUrl || 'http://localhost:3000';
+
+  let user = state.users.find((u) => u.email.toLowerCase() === norm);
+  if (!user) {
+    user = {
+      id: `usr-tr-${Date.now()}`,
+      fullName: params.fullName,
+      email: norm,
+      role: 'trainer',
+      status: 'active',
+      batchCode: params.batchCode || 'BATCH-2026',
+      joinedAt: new Date().toISOString(),
+    };
+    state.users.push(user);
+  } else {
+    user.role = 'trainer';
+  }
+
+  const trainer: TrainerRecord = {
+    id: `tr-${Date.now()}`,
+    email: norm,
+    fullName: params.fullName,
+    status: 'active',
+    batchCodes: params.batchCode ? [params.batchCode] : ['BATCH-2026'],
+    promotedAt: new Date().toISOString(),
+    promotedBy: 'Rahul Sir (Admin)',
+  };
+
+  const existingIdx = state.trainers.findIndex((t) => t.email.toLowerCase() === norm);
+  if (existingIdx !== -1) {
+    state.trainers[existingIdx] = trainer;
+  } else {
+    state.trainers.push(trainer);
+  }
+
+  return {
+    user,
+    trainer,
+    inviteLink: `${base}/login?inviteToken=${token}&email=${encodeURIComponent(norm)}`,
+    inviteToken: token,
+  };
+}
+
+export function acceptTrainerInvitation(params: { email: string }): boolean {
+  const norm = params.email.trim().toLowerCase();
+  const tr = state.trainers.find((t) => t.email.toLowerCase() === norm);
+  if (tr) {
+    tr.status = 'active';
+    return true;
+  }
+  return false;
+}
