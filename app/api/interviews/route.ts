@@ -220,7 +220,11 @@ export async function PUT(req: Request) {
     let nextQuestion: string | undefined = undefined;
     if (currentTurn < session.totalTurns) {
       session.currentTurn += 1;
-      nextQuestion = questions[session.currentTurn - 1] || questions[questions.length - 1];
+      if (session.customQuestions && session.customQuestions.length >= session.currentTurn) {
+        nextQuestion = session.customQuestions[session.currentTurn - 1];
+      } else {
+        nextQuestion = questions[session.currentTurn - 1] || questions[questions.length - 1];
+      }
       session.currentQuestion = nextQuestion;
     } else {
       // Completed session

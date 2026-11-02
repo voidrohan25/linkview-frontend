@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import {
@@ -12,7 +13,10 @@ import {
   CheckCircle2,
   HelpCircle,
   ArrowRight,
+  FileQuestion,
+  Plus,
 } from "lucide-react";
+import { QuestionBankItem } from "@/lib/interviewStore";
 
 export default function TrainerSchedulePage() {
   const router = useRouter();
@@ -30,6 +34,35 @@ export default function TrainerSchedulePage() {
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
 
+  // Question Source: 'auto' | 'custom'
+  const [questionSource, setQuestionSource] = useState<"auto" | "custom">("auto");
+  const [availableBankQuestions, setAvailableBankQuestions] = useState<QuestionBankItem[]>([]);
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
+
+  // Load question bank
+  useEffect(() => {
+    fetch("/api/trainer/questions")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success) {
+          setAvailableBankQuestions(json.data || []);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const filteredQuestions = availableBankQuestions.filter(
+    (q) => q.technology.toLowerCase() === technology.toLowerCase()
+  );
+
+  const toggleQuestionSelection = (id: string) => {
+    if (selectedQuestionIds.includes(id)) {
+      setSelectedQuestionIds(selectedQuestionIds.filter((item) => item !== id));
+    } else {
+      setSelectedQuestionIds([...selectedQuestionIds, id]);
+    }
+  };
+
   const handleSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
@@ -37,6 +70,13 @@ export default function TrainerSchedulePage() {
 
     try {
       const scheduledAt = new Date(`${scheduledDate}T${scheduledTime}:00Z`).toISOString();
+      const customQuestionsText =
+        questionSource === "custom"
+          ? availableBankQuestions
+              .filter((q) => selectedQuestionIds.includes(q.id))
+              .map((q) => q.question)
+          : undefined;
+
       const res = await fetch("/api/interviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -48,8 +88,9 @@ export default function TrainerSchedulePage() {
           interviewType,
           difficulty,
           durationMinutes,
-          questionCount,
+          questionCount: customQuestionsText ? customQuestionsText.length : questionCount,
           scheduledAt,
+          customQuestions: customQuestionsText,
         }),
       });
 
@@ -80,11 +121,11 @@ export default function TrainerSchedulePage() {
             </span>
             <span className="text-xs text-[#64748B]">• Automated Technical Interviewer</span>
           </div>
-          <h1 className="text-2xl font-extrabold text-[#0F172A] tracking-tight">
+          <h1 className="text-2xl font-extrabold text-[#0F172A] tracking-tight m-0">
             Schedule AI Mock Interview
           </h1>
           <p className="text-sm text-[#475569] mt-0.5">
-            Configure target technologies, difficulty level, and assign turn-based voice interview sessions to students.
+            Configure target technologies, difficulty level, and assign turn-based voice interview sessions with standard or custom imported questions.
           </p>
         </div>
 
@@ -150,7 +191,7 @@ export default function TrainerSchedulePage() {
 
             {mode === "student" ? (
               <div className="form-group pt-2">
-                <label className="form-label">Select Candidate *</label>
+                <label className="form-label text-xs">Select Candidate *</label>
                 <select
                   value={selectedStudent}
                   onChange={(e) => setSelectedStudent(e.target.value)}
@@ -165,7 +206,7 @@ export default function TrainerSchedulePage() {
               </div>
             ) : (
               <div className="form-group pt-2">
-                <label className="form-label">Select Target Batch *</label>
+                <label className="form-label text-xs">Select Target Batch *</label>
                 <select
                   value={selectedBatch}
                   onChange={(e) => setSelectedBatch(e.target.value)}
@@ -187,7 +228,7 @@ export default function TrainerSchedulePage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="form-group">
-                <label className="form-label">Technology Track *</label>
+                <label className="form-label text-xs">Technology Track *</label>
                 <select
                   value={technology}
                   onChange={(e) => setTechnology(e.target.value)}
@@ -198,12 +239,12 @@ export default function TrainerSchedulePage() {
                   <option value="DSA">Data Structures & Algorithms (DSA)</option>
                   <option value="React">React & Frontend</option>
                   <option value="SQL">SQL & Database Systems</option>
-                  <option value="HR">HR & Cultural Fit</option>
+                  <option value="Communication">Free Communication & HR</option>
                 </select>
               </div>
 
               <div className="form-group">
-                <label className="form-label">Difficulty Level *</label>
+                <label className="form-label text-xs">Difficulty Level *</label>
                 <select
                   value={difficulty}
                   onChange={(e) => setDifficulty(e.target.value as any)}
@@ -218,7 +259,7 @@ export default function TrainerSchedulePage() {
 
             <div className="grid grid-cols-3 gap-4">
               <div className="form-group">
-                <label className="form-label">Interview Type</label>
+                <label className="form-label text-xs">Interview Type</label>
                 <select
                   value={interviewType}
                   onChange={(e) => setInterviewType(e.target.value as any)}
@@ -232,7 +273,7 @@ export default function TrainerSchedulePage() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Duration (Minutes)</label>
+                <label className="form-label text-xs">Duration (Minutes)</label>
                 <input
                   type="number"
                   min="15"
@@ -244,7 +285,7 @@ export default function TrainerSchedulePage() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Question Count</label>
+                <label className="form-label text-xs">Question Count</label>
                 <input
                   type="number"
                   min="2"
@@ -252,13 +293,14 @@ export default function TrainerSchedulePage() {
                   value={questionCount}
                   onChange={(e) => setQuestionCount(Number(e.target.value))}
                   className="form-input text-xs"
+                  disabled={questionSource === "custom"}
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="form-group">
-                <label className="form-label">Scheduled Date</label>
+                <label className="form-label text-xs">Scheduled Date</label>
                 <input
                   type="date"
                   value={scheduledDate}
@@ -268,7 +310,7 @@ export default function TrainerSchedulePage() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Scheduled Time</label>
+                <label className="form-label text-xs">Scheduled Time</label>
                 <input
                   type="time"
                   value={scheduledTime}
@@ -277,6 +319,113 @@ export default function TrainerSchedulePage() {
                 />
               </div>
             </div>
+          </div>
+
+          {/* 3. Question Source (Standard vs Custom Imported Questions) */}
+          <div className="card p-6 bg-white border border-[#E2E8F0] space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-[#0F172A] m-0">
+                3. Interview Question Source
+              </h3>
+              <Link
+                href="/trainer/import-questions"
+                className="text-xs font-bold text-orange-600 hover:underline flex items-center gap-1"
+              >
+                <Plus size={13} />
+                <span>Import New Questions</span>
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setQuestionSource("auto")}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  questionSource === "auto"
+                    ? "border-orange-500 bg-orange-50/50 shadow-sm"
+                    : "border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                <div className="font-bold text-xs text-[#0F172A]">Standard AI Question Bank</div>
+                <div className="text-[11px] text-slate-500">
+                  Adaptive questions automatically selected for {technology}
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setQuestionSource("custom")}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  questionSource === "custom"
+                    ? "border-orange-500 bg-orange-50/50 shadow-sm"
+                    : "border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                <div className="font-bold text-xs text-[#0F172A]">Custom Imported Questions</div>
+                <div className="text-[11px] text-slate-500">
+                  Select specific questions imported by faculty
+                </div>
+              </button>
+            </div>
+
+            {/* Custom Question Picker */}
+            {questionSource === "custom" && (
+              <div className="space-y-3 pt-2">
+                <div className="text-xs text-slate-600 flex items-center justify-between">
+                  <span>Select questions to ask in this mock interview:</span>
+                  <span className="font-bold text-orange-600">
+                    {selectedQuestionIds.length} questions selected
+                  </span>
+                </div>
+
+                {filteredQuestions.length === 0 ? (
+                  <div className="p-4 rounded-xl bg-slate-50 border border-dashed border-slate-300 text-center space-y-2">
+                    <p className="text-xs text-slate-600 m-0">
+                      No custom questions found for <strong>{technology}</strong>.
+                    </p>
+                    <Link
+                      href="/trainer/import-questions"
+                      className="btn btn-outline btn-sm text-xs py-1 px-3 inline-flex items-center gap-1"
+                    >
+                      <Plus size={12} />
+                      <span>Import Questions for {technology}</span>
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="max-h-60 overflow-y-auto space-y-2 border border-slate-200 rounded-xl p-3 bg-slate-50">
+                    {filteredQuestions.map((q) => {
+                      const isChecked = selectedQuestionIds.includes(q.id);
+                      return (
+                        <div
+                          key={q.id}
+                          onClick={() => toggleQuestionSelection(q.id)}
+                          className={`p-2.5 rounded-lg border text-xs cursor-pointer flex items-start gap-2.5 transition-colors ${
+                            isChecked
+                              ? "bg-white border-orange-500 shadow-sm"
+                              : "bg-white/80 border-slate-200 hover:border-slate-300"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {}}
+                            className="mt-0.5 rounded text-orange-600 focus:ring-orange-500"
+                          />
+                          <div className="flex-1">
+                            <span className="font-semibold text-slate-800">{q.question}</span>
+                            <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-500">
+                              <span className="font-medium text-slate-600">{q.topic}</span>
+                              <span>•</span>
+                              <span className="capitalize">{q.difficulty}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Submit */}
@@ -291,7 +440,7 @@ export default function TrainerSchedulePage() {
             <button
               type="submit"
               disabled={submitting}
-              className="btn btn-primary text-xs py-2.5 px-6 font-bold"
+              className="btn btn-primary text-xs py-2.5 px-6 font-bold flex items-center gap-1.5 shadow-sm"
             >
               <Sparkles size={15} />
               <span>{submitting ? "Scheduling Session..." : "Confirm & Schedule Mock"}</span>

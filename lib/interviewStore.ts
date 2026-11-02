@@ -71,6 +71,7 @@ export interface InterviewSessionRecord {
   currentTurn: number;
   totalTurns: number;
   currentQuestion: string;
+  customQuestions?: string[];
   history: Array<{
     turn: number;
     question: string;
@@ -319,6 +320,35 @@ class InterviewStore {
     return this.interviews.find(i => i.id === id) || null;
   }
 
+  addQuestion(item: Omit<QuestionBankItem, 'id'> & { id?: string }): QuestionBankItem {
+    const newItem: QuestionBankItem = {
+      id: item.id || `qb-custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      technology: item.technology,
+      topic: item.topic || 'Custom Topics',
+      difficulty: item.difficulty || 'intermediate',
+      question: item.question,
+      expectedKeypoints: item.expectedKeypoints || [],
+      idealAnswer: item.idealAnswer || '',
+      tags: item.tags || [item.technology, 'CustomImport'],
+    };
+    this.questionBank.unshift(newItem);
+    return newItem;
+  }
+
+  addBulkQuestions(items: Array<Omit<QuestionBankItem, 'id'> & { id?: string }>): QuestionBankItem[] {
+    const added = items.map((item) => this.addQuestion(item));
+    return added;
+  }
+
+  deleteQuestion(id: string): boolean {
+    const index = this.questionBank.findIndex((q) => q.id === id);
+    if (index !== -1) {
+      this.questionBank.splice(index, 1);
+      return true;
+    }
+    return false;
+  }
+
   scheduleInterview(data: Partial<InterviewSessionRecord>): InterviewSessionRecord {
     const newId = data.id || `int-2026-${String(this.interviews.length + 1).padStart(3, '0')}`;
     const student = this.students.find(s => s.id === data.studentId) || {
@@ -334,9 +364,13 @@ class InterviewStore {
     };
     const tech = data.technology || 'Python';
     
-    // Pick questions from question bank for this tech
+    // Pick questions from question bank for this tech or use custom imported questions
     const matchingQuestions = this.questionBank.filter(q => q.technology.toLowerCase() === tech.toLowerCase());
-    const initialQuestion = matchingQuestions[0]?.question || `Can you introduce your experience with ${tech} and core projects?`;
+    const customList = data.customQuestions && data.customQuestions.length > 0 ? data.customQuestions : null;
+    const initialQuestion = customList
+      ? customList[0]
+      : matchingQuestions[0]?.question || `Can you introduce your experience with ${tech} and core projects?`;
+    const count = customList ? customList.length : (data.questionCount || 3);
 
     const newRecord: InterviewSessionRecord = {
       id: newId,
@@ -351,12 +385,13 @@ class InterviewStore {
       interviewType: data.interviewType || 'technical',
       difficulty: data.difficulty || 'intermediate',
       durationMinutes: data.durationMinutes || 30,
-      questionCount: data.questionCount || 3,
+      questionCount: count,
       scheduledAt: data.scheduledAt || new Date(Date.now() + 86400000).toISOString(),
       status: 'scheduled',
       currentTurn: 1,
-      totalTurns: data.questionCount || 3,
+      totalTurns: count,
       currentQuestion: initialQuestion,
+      customQuestions: customList || undefined,
       history: [],
     };
 

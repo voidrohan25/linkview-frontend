@@ -116,6 +116,7 @@ export function AppShell({
         items: [
           { label: "Trainer Studio", href: "/trainer/dashboard", icon: LayoutDashboard },
           { label: "Schedule AI Mock", href: "/trainer/schedule", icon: CalendarPlus, badge: "NEW" },
+          { label: "Import Questions", href: "/trainer/import-questions", icon: FileQuestion, badge: "NEW" },
           { label: "Evaluation Queue", href: "/trainer/approvals", icon: CheckCircle2 },
         ],
       },
