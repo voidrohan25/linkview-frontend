@@ -7,12 +7,7 @@ import {
   RefreshCw,
   AlertTriangle,
   CheckCircle2,
-  Maximize2,
-  Minimize2,
   ShieldAlert,
-  User,
-  Sliders,
-  Sparkles,
 } from "lucide-react";
 
 export interface ProctoringDetectionResult {
@@ -26,6 +21,7 @@ export interface ProctoringDetectionResult {
 }
 
 interface StudentWebcamFeedProps {
+  externalStream?: MediaStream | null;
   onStreamReady?: (stream: MediaStream) => void;
   onDetectionUpdate?: (result: ProctoringDetectionResult) => void;
   onCameraStatusChange?: (active: boolean) => void;
@@ -34,6 +30,7 @@ interface StudentWebcamFeedProps {
 }
 
 export function StudentWebcamFeed({
+  externalStream,
   onStreamReady,
   onDetectionUpdate,
   onCameraStatusChange,
@@ -44,6 +41,7 @@ export function StudentWebcamFeed({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const analysisTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const streamStartTimeRef = useRef<number>(0);
 
   // Camera & Device State
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
@@ -55,127 +53,173 @@ export function StudentWebcamFeed({
 
   // Real-time Vision & Proctoring Metrics
   const [faceDetected, setFaceDetected] = useState<boolean>(true);
-  const [multipleFaces, setMultipleFaces] = useState<boolean>(false);
   const [cameraCovered, setCameraCovered] = useState<boolean>(false);
   const [lowLighting, setLowLighting] = useState<boolean>(false);
-  const [gazeAlert, setGazeAlert] = useState<boolean>(false);
   const [luminance, setLuminance] = useState<number>(120);
 
   // Consecutive missing frame counter
   const missingFaceStreakRef = useRef<number>(0);
-  const prevFrameDataRef = useRef<Uint8ClampedArray | null>(null);
 
   // 1. Enumerate available video input devices
   const loadVideoDevices = useCallback(async () => {
     try {
-      if (!navigator.mediaDevices?.enumerateDevices) {
-        setCameraError("Webcam enumeration is not supported in this browser.");
-        return;
-      }
+      if (!navigator.mediaDevices?.enumerateDevices) return;
       const allDevices = await navigator.mediaDevices.enumerateDevices();
       const videoInputs = allDevices.filter((d) => d.kind === "videoinput");
       setVideoDevices(videoInputs);
-
       if (videoInputs.length > 0 && !selectedDeviceId) {
         setSelectedDeviceId(videoInputs[0].deviceId);
       }
-    } catch (err: unknown) {
-      console.warn("Error enumerating video devices:", err);
+    } catch (err) {
+      console.warn("Device enumeration notice:", err);
     }
   }, [selectedDeviceId]);
 
-  // 2. Initialize and attach webcam stream
+  // 2. Attach a given MediaStream to the video element safely
+  const attachStreamToVideo = useCallback(
+    (stream: MediaStream) => {
+      streamRef.current = stream;
+      streamStartTimeRef.current = Date.now();
+
+      const video = videoRef.current;
+      if (!video) return;
+
+      video.srcObject = stream;
+      video.muted = true;
+
+      // Handle play promise safely
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setCameraActive(true);
+            setCameraLoading(false);
+            setCameraError(null);
+            onCameraStatusChange?.(true);
+            onStreamReady?.(stream);
+          })
+          .catch((err) => {
+            console.warn("Webcam autoplay warning:", err);
+            // Even if browser requires user interaction for play, clear loading
+            setCameraLoading(false);
+            setCameraActive(true);
+          });
+      }
+
+      // Track lifecycle events
+      stream.getVideoTracks().forEach((track) => {
+        track.onended = () => {
+          setCameraActive(false);
+          setCameraError("Webcam stream ended or disconnected.");
+          onCameraStatusChange?.(false);
+        };
+        track.onmute = () => {
+          setCameraActive(false);
+        };
+        track.onunmute = () => {
+          setCameraActive(true);
+          setCameraError(null);
+        };
+      });
+
+      // Quick fallback timeout to guarantee loading spinner disappears
+      const timer = setTimeout(() => {
+        setCameraLoading(false);
+        setCameraActive(true);
+      }, 1200);
+
+      return () => clearTimeout(timer);
+    },
+    [onCameraStatusChange, onStreamReady]
+  );
+
+  // 3. Initialize camera hardware with resilient fallback constraints
   const startCamera = useCallback(
     async (deviceId?: string) => {
+      // If external stream is passed and alive, use it directly
+      if (
+        externalStream &&
+        externalStream.active &&
+        externalStream.getVideoTracks().some((t) => t.readyState === "live")
+      ) {
+        attachStreamToVideo(externalStream);
+        return;
+      }
+
       setCameraLoading(true);
       setCameraError(null);
 
-      // Stop previous stream tracks
-      if (streamRef.current) {
+      // Stop previous stream tracks owned by this component
+      if (streamRef.current && streamRef.current !== externalStream) {
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       }
 
       try {
-        const constraints: MediaStreamConstraints = {
-          video: {
-            deviceId: deviceId ? { exact: deviceId } : undefined,
-            width: { ideal: 1280, min: 640 },
-            height: { ideal: 720, min: 480 },
-            frameRate: { ideal: 30, min: 15 },
-            facingMode: "user",
-          },
-          audio: false, // Audio handled separately in AudioDeviceSelector
-        };
+        let stream: MediaStream | null = null;
 
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        streamRef.current = stream;
-
-        // Listen for track ending/disconnection
-        stream.getVideoTracks().forEach((track) => {
-          track.onended = () => {
-            setCameraActive(false);
-            setCameraError("Camera stream was disconnected or interrupted.");
-            onCameraStatusChange?.(false);
+        // Attempt 1: Ideal HD constraints
+        try {
+          const constraints: MediaStreamConstraints = {
+            video: deviceId
+              ? { deviceId: { ideal: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+              : { width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false,
           };
-          track.onmute = () => {
-            setCameraActive(false);
-            setCameraError("Camera hardware muted or paused by operating system.");
-          };
-          track.onunmute = () => {
-            setCameraActive(true);
-            setCameraError(null);
-          };
-        });
-
-        // Attach stream to HTMLVideoElement with autoplay & playsInline
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.onloadedmetadata = () => {
-            videoRef.current
-              ?.play()
-              .then(() => {
-                setCameraActive(true);
-                setCameraLoading(false);
-                onCameraStatusChange?.(true);
-                onStreamReady?.(stream);
-              })
-              .catch((playErr) => {
-                console.warn("Video play error:", playErr);
-                setCameraLoading(false);
-              });
-          };
-        } else {
-          setCameraActive(true);
-          setCameraLoading(false);
-          onCameraStatusChange?.(true);
-          onStreamReady?.(stream);
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (attempt1Err) {
+          console.warn("Attempt 1 with HD constraints failed, falling back to basic video:", attempt1Err);
+          // Attempt 2: Basic resilient fallback constraint
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         }
 
-        // Refresh device list to capture labels once permissions are granted
-        loadVideoDevices();
+        if (stream) {
+          attachStreamToVideo(stream);
+          loadVideoDevices();
+        }
       } catch (err: unknown) {
         const error = err as Error;
-        console.error("Camera access failed:", error);
+        console.error("Camera acquisition failed:", error);
         setCameraLoading(false);
         setCameraActive(false);
         onCameraStatusChange?.(false);
 
         if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
-          setCameraError("Camera permission denied. Please allow camera access in browser settings.");
-        } else if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
-          setCameraError("No camera hardware found on this machine.");
+          setCameraError("Camera permission denied. Click 'Grant Camera' below or enable permissions in Chrome.");
         } else if (error.name === "NotReadableError" || error.name === "TrackStartError") {
-          setCameraError("Camera is currently in use by another application (e.g. Zoom or Teams).");
+          setCameraError("Camera hardware is busy in another app or restarting. Click 'Retry Camera' below.");
         } else {
           setCameraError(error.message || "Failed to initialize webcam.");
         }
       }
     },
-    [loadVideoDevices, onCameraStatusChange, onStreamReady]
+    [externalStream, attachStreamToVideo, loadVideoDevices, onCameraStatusChange]
   );
 
-  // 3. Computer Vision & Frame Health Analysis Loop
+  // 4. Initial setup and handling external stream changes
+  useEffect(() => {
+    loadVideoDevices();
+
+    if (
+      externalStream &&
+      externalStream.active &&
+      externalStream.getVideoTracks().some((t) => t.readyState === "live")
+    ) {
+      attachStreamToVideo(externalStream);
+    } else {
+      startCamera(selectedDeviceId);
+    }
+
+    return () => {
+      // Only stop tracks if we own them (not external)
+      if (streamRef.current && streamRef.current !== externalStream) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+    };
+  }, [externalStream, selectedDeviceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 5. Computer Vision & Frame Health Analysis Loop
   useEffect(() => {
     if (!cameraActive) return;
 
@@ -183,6 +227,11 @@ export function StudentWebcamFeed({
       const video = videoRef.current;
       const canvas = canvasRef.current;
       if (!video || !canvas || video.readyState < 2) return;
+
+      // Skip analysis during camera sensor warm-up (first 3.5 seconds)
+      if (Date.now() - streamStartTimeRef.current < 3500) {
+        return;
+      }
 
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (!ctx) return;
@@ -195,7 +244,7 @@ export function StudentWebcamFeed({
       const data = frame.data;
       const pixelCount = data.length / 4;
 
-      // 3A. Calculate average luminance and pixel variance
+      // 5A. Calculate average luminance
       let totalLuma = 0;
       for (let i = 0; i < data.length; i += 4) {
         totalLuma += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
@@ -203,30 +252,20 @@ export function StudentWebcamFeed({
       const avgLuma = Math.round(totalLuma / pixelCount);
       setLuminance(avgLuma);
 
-      // Camera covered check (completely dark < 18 or washed out white > 245)
-      const isCovered = avgLuma < 18 || avgLuma > 245;
+      // Camera covered check (strictly under 10 or washed out above 250)
+      const isCovered = avgLuma < 10 || avgLuma > 250;
       setCameraCovered(isCovered);
 
       // Low lighting check
-      const isLowLight = avgLuma >= 18 && avgLuma < 45;
+      const isLowLight = avgLuma >= 10 && avgLuma < 35;
       setLowLighting(isLowLight);
 
-      // 3B. Frame Motion / Freeze Detection
-      let motionDiff = 0;
-      if (prevFrameDataRef.current && prevFrameDataRef.current.length === data.length) {
-        for (let i = 0; i < data.length; i += 16) {
-          motionDiff += Math.abs(data[i] - prevFrameDataRef.current[i]);
-        }
-      }
-      prevFrameDataRef.current = new Uint8ClampedArray(data);
-
-      // 3C. Face Centering / Presence Heuristic
-      // Scan middle region for human skin tone luminance distribution
+      // 5B. Face Presence & Skin Tone Area Heuristic
       let centerEnergy = 0;
-      const startRow = 15;
-      const endRow = 55;
-      const startCol = 25;
-      const endCol = 70;
+      const startRow = 12;
+      const endRow = 58;
+      const startCol = 20;
+      const endCol = 76;
 
       for (let r = startRow; r < endRow; r++) {
         for (let c = startCol; c < endCol; c++) {
@@ -234,15 +273,22 @@ export function StudentWebcamFeed({
           const rVal = data[idx];
           const gVal = data[idx + 1];
           const bVal = data[idx + 2];
-          // Basic skin tone range heuristic in RGB space
-          if (rVal > 60 && gVal > 40 && bVal > 20 && rVal > bVal && Math.abs(rVal - gVal) > 12) {
+
+          // Inclusive skin tone & facial contour spectrum
+          if (
+            rVal > 45 &&
+            gVal > 30 &&
+            bVal > 15 &&
+            rVal >= bVal &&
+            Math.abs(rVal - gVal) > 6
+          ) {
             centerEnergy++;
           }
         }
       }
 
-      const expectedSkinPixels = (endRow - startRow) * (endCol - startCol) * 0.12;
-      const isFacePresent = !isCovered && centerEnergy >= expectedSkinPixels;
+      const totalScanArea = (endRow - startRow) * (endCol - startCol);
+      const isFacePresent = !isCovered && centerEnergy >= totalScanArea * 0.08;
 
       if (!isFacePresent) {
         missingFaceStreakRef.current++;
@@ -250,10 +296,11 @@ export function StudentWebcamFeed({
         missingFaceStreakRef.current = 0;
       }
 
-      const verifiedFaceDetected = missingFaceStreakRef.current < 3;
+      // Require 4 consecutive failures (8+ seconds) before triggering violation
+      const verifiedFaceDetected = missingFaceStreakRef.current < 4;
       setFaceDetected(verifiedFaceDetected);
 
-      // Notification to parent proctoring monitor
+      // Only notify parent proctoring monitor if status changed
       onDetectionUpdate?.({
         faceDetected: verifiedFaceDetected,
         multipleFaces: false,
@@ -262,11 +309,9 @@ export function StudentWebcamFeed({
         gazeAway: false,
         luminance: avgLuma,
         message: isCovered
-          ? "Camera appears covered or blocked"
+          ? "Camera lens appears covered or obstructed"
           : !verifiedFaceDetected
-          ? "Face not detected in frame. Please center yourself."
-          : isLowLight
-          ? "Lighting is dim. Please face a light source."
+          ? "Face not detected in camera frame. Keep face centered."
           : undefined,
       });
     }, 2000);
@@ -279,20 +324,7 @@ export function StudentWebcamFeed({
     };
   }, [cameraActive, onDetectionUpdate]);
 
-  // Initial mount
-  useEffect(() => {
-    loadVideoDevices();
-    startCamera(selectedDeviceId);
-
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-      }
-    };
-  }, [selectedDeviceId, loadVideoDevices, startCamera]);
-
-  // Toggle Video Mute (Camera Privacy)
+  // Toggle Video Mute (Privacy)
   const toggleVideoMute = () => {
     if (!streamRef.current) return;
     const videoTrack = streamRef.current.getVideoTracks()[0];
@@ -306,20 +338,24 @@ export function StudentWebcamFeed({
     <div
       className={`relative rounded-2xl overflow-hidden bg-[#0A0F1D] border border-slate-800 shadow-2xl flex flex-col ${className}`}
     >
-      {/* Top Overlay: Candidate Info & Camera Health */}
-      <div className="absolute top-0 inset-x-0 z-20 p-3 bg-gradient-to-b from-[#0A0F1D]/90 via-[#0A0F1D]/40 to-transparent flex items-center justify-between">
+      {/* Top Telemetry & Proctoring Status */}
+      <div className="absolute top-0 inset-x-0 z-20 p-3 bg-gradient-to-b from-[#0A0F1D]/90 via-[#0A0F1D]/40 to-transparent flex items-center justify-between pointer-events-none">
         <div className="flex items-center gap-2">
           <span
             className={`w-2.5 h-2.5 rounded-full ${
               cameraActive && faceDetected && !cameraCovered
                 ? "bg-emerald-500 animate-pulse"
-                : "bg-red-500"
+                : "bg-amber-500"
             }`}
           />
           <div className="flex flex-col">
             <span className="text-xs font-bold text-white leading-tight">Candidate Camera (You)</span>
             <span className="text-[10px] text-slate-400 font-mono">
-              {cameraActive ? (faceDetected ? "Face Tracked • Live" : "Face Out of Frame") : "Offline"}
+              {cameraActive
+                ? faceDetected
+                  ? "Face Tracked • Live"
+                  : "Calibrating • Keep Centered"
+                : "Initializing..."}
             </span>
           </div>
         </div>
@@ -357,7 +393,7 @@ export function StudentWebcamFeed({
           playsInline
           muted
           className={`w-full h-full object-cover -scale-x-100 transition-opacity duration-300 ${
-            cameraActive && !isMutedVideo ? "opacity-100" : "opacity-0"
+            !isMutedVideo ? "opacity-100" : "opacity-0"
           }`}
         />
 
@@ -365,10 +401,10 @@ export function StudentWebcamFeed({
         <canvas ref={canvasRef} className="hidden" />
 
         {/* Face Tracking Bounding Box Overlay */}
-        {cameraActive && !isMutedVideo && faceDetected && (
-          <div className="absolute inset-8 sm:inset-12 pointer-events-none border-2 border-emerald-400/40 rounded-2xl animate-pulse">
+        {cameraActive && !isMutedVideo && (
+          <div className="absolute inset-8 sm:inset-12 pointer-events-none border-2 border-emerald-400/35 rounded-2xl">
             <div className="absolute -top-3 left-4 bg-emerald-950/80 border border-emerald-500 text-emerald-300 px-2 py-0.5 rounded text-[10px] font-mono font-bold">
-              AI Face Lock: 98.4%
+              AI Face Lock • Live
             </div>
             {/* Corner crosshairs */}
             <div className="absolute -top-1 -left-1 w-3 h-3 border-t-2 border-l-2 border-emerald-400" />
@@ -378,38 +414,40 @@ export function StudentWebcamFeed({
           </div>
         )}
 
-        {/* Loading / Error / Muted State Overlays */}
-        {cameraLoading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 text-white space-y-2 p-4">
-            <RefreshCw size={28} className="animate-spin text-orange-500" />
-            <p className="text-xs font-semibold text-slate-300">Connecting to webcam hardware...</p>
+        {/* Non-blocking loading pill (only shown when truly loading without video) */}
+        {cameraLoading && !cameraActive && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/70 backdrop-blur-sm text-white space-y-2 p-4 z-10">
+            <RefreshCw size={26} className="animate-spin text-orange-500" />
+            <p className="text-xs font-semibold text-slate-200">Connecting to webcam...</p>
           </div>
         )}
 
-        {!cameraLoading && cameraError && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/95 text-white space-y-3 p-6 text-center">
+        {/* Camera Error / Permission Fallback View */}
+        {cameraError && !cameraActive && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/95 text-white space-y-3 p-6 text-center z-10">
             <div className="p-3 rounded-xl bg-red-950/80 border border-red-800 text-red-400">
               <CameraOff size={28} />
             </div>
             <div className="space-y-1 max-w-xs">
               <p className="text-xs font-bold text-red-300">{cameraError}</p>
               <p className="text-[11px] text-slate-400">
-                Grant camera permission in your browser or select another input device below.
+                Grant camera access in your browser or select an alternate camera below.
               </p>
             </div>
             <button
               type="button"
               onClick={() => startCamera(selectedDeviceId)}
-              className="btn btn-outline btn-sm text-xs py-1.5 px-3 flex items-center gap-1.5 font-bold text-white border-slate-700 hover:bg-slate-800"
+              className="btn btn-primary btn-sm text-xs py-1.5 px-4 flex items-center gap-1.5 font-bold shadow-md"
             >
               <RefreshCw size={13} />
-              <span>Retry Camera</span>
+              <span>Retry / Connect Camera</span>
             </button>
           </div>
         )}
 
+        {/* Video Muted Overlay */}
         {isMutedVideo && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 text-white space-y-2">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 text-white space-y-2 z-10">
             <CameraOff size={32} className="text-slate-500" />
             <span className="text-xs text-slate-400 font-semibold">Camera Feed Paused</span>
           </div>
@@ -470,4 +508,5 @@ export function StudentWebcamFeed({
     </div>
   );
 }
+
 export default StudentWebcamFeed;

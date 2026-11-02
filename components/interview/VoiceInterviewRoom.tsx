@@ -53,6 +53,7 @@ export function VoiceInterviewRoom({
   const [audioOutputTested, setAudioOutputTested] = useState(false);
   const [micAudioLevel, setMicAudioLevel] = useState(0);
   const [cameraActive, setCameraActive] = useState(false);
+  const [sharedStream, setSharedStream] = useState<MediaStream | null>(null);
   const [proctoringConsent, setProctoringConsent] = useState(true);
 
   // Configuration
@@ -168,8 +169,11 @@ export function VoiceInterviewRoom({
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
+      if (sharedStream) {
+        sharedStream.getTracks().forEach((track) => track.stop());
+      }
     };
-  }, []);
+  }, [sharedStream]);
 
   // Speaker Output Test
   const testSpeaker = () => {
@@ -416,10 +420,10 @@ export function VoiceInterviewRoom({
           message: result.message || "Candidate face not detected in camera frame",
           timestamp: new Date().toLocaleTimeString(),
         },
-        ...prev,
+        ...prev.slice(0, 49),
       ]);
-      setCurrentWarning("Warning: Face not detected! Keep your face centered in camera view.");
-      setTimeout(() => setCurrentWarning(null), 4000);
+      setCurrentWarning((prev) => prev || "Warning: Face not detected! Keep your face centered in camera view.");
+      setTimeout(() => setCurrentWarning(null), 5000);
     } else if (result.cameraCovered) {
       setProctoringLogs((prev) => [
         {
@@ -429,8 +433,10 @@ export function VoiceInterviewRoom({
           message: "Camera lens obstructed or covered",
           timestamp: new Date().toLocaleTimeString(),
         },
-        ...prev,
+        ...prev.slice(0, 49),
       ]);
+      setCurrentWarning((prev) => prev || "Warning: Camera obstructed! Ensure camera lens is clear.");
+      setTimeout(() => setCurrentWarning(null), 5000);
     }
   }, []);
 
@@ -544,6 +550,8 @@ export function VoiceInterviewRoom({
 
                 {/* Live Candidate Webcam Component */}
                 <StudentWebcamFeed
+                  externalStream={sharedStream}
+                  onStreamReady={(stream) => setSharedStream(stream)}
                   onDetectionUpdate={handleDetectionUpdate}
                   onCameraStatusChange={(active) => setCameraActive(active)}
                   className="border-2 border-slate-700 shadow-lg"
@@ -895,6 +903,8 @@ export function VoiceInterviewRoom({
             {/* Tile 2: ACTUAL LIVE CANDIDATE WEBCAM */}
             <div className="flex flex-col">
               <StudentWebcamFeed
+                externalStream={sharedStream}
+                onStreamReady={(stream) => setSharedStream(stream)}
                 onDetectionUpdate={handleDetectionUpdate}
                 onCameraStatusChange={(active) => setCameraActive(active)}
                 className="h-full min-h-[320px]"
