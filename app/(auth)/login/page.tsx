@@ -19,9 +19,22 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      // Clear any conflicting stale Supabase Google session before password login
-      if (!isGoogle && isSupabaseConfigured) {
-        await supabase.auth.signOut().catch(() => {});
+      // Always purge conflicting stale Supabase Google sessions before password login
+      if (!isGoogle) {
+        try {
+          await supabase.auth.signOut();
+        } catch {}
+        if (typeof window !== "undefined") {
+          try {
+            Object.keys(localStorage).forEach((key) => {
+              if (key.startsWith("sb-") && key.endsWith("-auth-token")) {
+                localStorage.removeItem(key);
+              }
+            });
+            localStorage.removeItem("linktest_current_user");
+            localStorage.removeItem("linktest_current_role");
+          } catch {}
+        }
       }
 
       const res = await fetch("/api/auth/login", {

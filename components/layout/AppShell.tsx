@@ -85,11 +85,17 @@ export function AppShell({
       }
     } catch {}
 
-    // 2. Only sync with Supabase Auth session if appropriate (never let an old student Google session overwrite Admin)
+    // 2. Only sync with Supabase Auth session if appropriate (never overwrite an active Admin or Trainer session)
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user?.email) {
-        // If logged into admin portal, do not overwrite with student session
-        if (role === "admin" && storedUser && storedUser.role === "admin" && storedUser.email !== user.email) {
+        // If user already logged in with explicit credentials and email differs, ignore conflicting Supabase user
+        if (storedUser?.email && storedUser.email.toLowerCase() !== user.email.toLowerCase()) {
+          console.warn("Supabase session email differs from stored active login; keeping stored login:", storedUser.email);
+          return;
+        }
+
+        // If current role is admin and Supabase user is not an admin, never downgrade to student
+        if (role === "admin" && !user.email.toLowerCase().includes("admin") && user.email.toLowerCase() !== "rahul.sir@linktest.io") {
           return;
         }
 
@@ -121,6 +127,11 @@ export function AppShell({
       await supabase.auth.signOut();
     } catch {}
     try {
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith("sb-") && key.endsWith("-auth-token")) {
+          localStorage.removeItem(key);
+        }
+      });
       localStorage.removeItem("linktest_current_user");
       localStorage.removeItem("linktest_current_role");
     } catch {}

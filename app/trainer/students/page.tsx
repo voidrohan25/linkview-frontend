@@ -12,6 +12,7 @@ import {
   ChevronRight,
   TrendingUp,
   RefreshCw,
+  Check,
 } from "lucide-react";
 
 interface StudentRecord {
@@ -27,10 +28,19 @@ interface StudentRecord {
   readiness?: string;
 }
 
+const AVAILABLE_BATCHES = [
+  { code: "PY-2026-A", label: "PY-2026-A (Python Track)", tech: "Python Full Stack" },
+  { code: "JAVA-2026-B", label: "JAVA-2026-B (Java Enterprise)", tech: "Java Enterprise" },
+  { code: "DSA-2026-C", label: "DSA-2026-C (DSA & Systems)", tech: "DSA & Algorithms" },
+  { code: "REACT-2026-D", label: "REACT-2026-D (Frontend & React)", tech: "React & Next.js" },
+  { code: "FULLSTACK-2026-E", label: "FULLSTACK-2026-E (Full Stack Placement)", tech: "MERN / Full Stack" },
+];
+
 export default function TrainerStudentsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [students, setStudents] = useState<StudentRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [batchNotice, setBatchNotice] = useState<string | null>(null);
 
   const fetchStudents = async () => {
     setLoading(true);
@@ -38,15 +48,20 @@ export default function TrainerStudentsPage() {
       const res = await fetch("/api/admin/users?role=student");
       if (res.ok) {
         const json = await res.json();
-        if (json.users && Array.isArray(json.users)) {
-          const mapped: StudentRecord[] = json.users.map((u: any, idx: number) => ({
+        const list = Array.isArray(json.data) ? json.data : (Array.isArray(json.users) ? json.users : []);
+        if (list.length > 0) {
+          const mapped: StudentRecord[] = list.map((u: any, idx: number) => ({
             id: u.id || `std-${idx + 100}`,
             fullName: u.fullName || u.email?.split("@")[0] || "Candidate",
             email: u.email,
             role: u.role,
             batchCode: u.batchCode || "PY-2026-A",
             batch: u.batchCode ? `Batch ${u.batchCode}` : "Python Full Stack 2026-A",
-            technology: u.batchCode?.startsWith("JAVA") ? "Java Enterprise" : "Python Full Stack",
+            technology: u.batchCode?.startsWith("JAVA")
+              ? "Java Enterprise"
+              : u.batchCode?.startsWith("DSA")
+              ? "DSA & Algorithms"
+              : "Python Full Stack",
             interviewsTaken: Math.floor(Math.random() * 3) + 1,
             avgScore: 78 + (idx % 18),
             readiness: (78 + (idx % 18)) >= 85 ? "Placement Ready" : "High Readiness",
@@ -114,6 +129,40 @@ export default function TrainerStudentsPage() {
     fetchStudents();
   }, []);
 
+  const handleAssignBatch = async (studentId: string, studentName: string, newBatch: string) => {
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update_batch",
+          userId: studentId,
+          batchCode: newBatch,
+        }),
+      });
+
+      if (res.ok) {
+        setStudents((prev) =>
+          prev.map((s) =>
+            s.id === studentId
+              ? {
+                  ...s,
+                  batchCode: newBatch,
+                  batch: `Batch ${newBatch}`,
+                  technology:
+                    AVAILABLE_BATCHES.find((b) => b.code === newBatch)?.tech || s.technology,
+                }
+              : s
+          )
+        );
+        setBatchNotice(`Assigned ${studentName} to batch ${newBatch}!`);
+        setTimeout(() => setBatchNotice(null), 4000);
+      }
+    } catch (e) {
+      console.error("Failed to assign student to batch:", e);
+    }
+  };
+
   const filtered = students.filter(
     (s) =>
       s.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -138,7 +187,7 @@ export default function TrainerStudentsPage() {
               Assigned Candidate Rosters
             </h1>
             <p className="text-sm text-[#475569] mt-0.5">
-              Track individual candidate interview turnout, assigned cohorts, and schedule targeted AI mocks.
+              Track candidates, assign them to your cohort batches, and schedule targeted AI mock interviews.
             </p>
           </div>
 
@@ -157,6 +206,13 @@ export default function TrainerStudentsPage() {
             </Link>
           </div>
         </div>
+
+        {batchNotice && (
+          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2 animate-fadeIn">
+            <Check size={16} className="text-emerald-600" />
+            <span>{batchNotice}</span>
+          </div>
+        )}
 
         {/* Search */}
         <div className="card p-4 bg-white border border-[#E2E8F0] max-w-md">
@@ -179,7 +235,7 @@ export default function TrainerStudentsPage() {
               <thead>
                 <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0] text-xs font-bold text-[#64748B] uppercase tracking-wider">
                   <th className="py-3 px-4">CANDIDATE</th>
-                  <th className="py-3 px-4">ASSIGNED BATCH & TRACK</th>
+                  <th className="py-3 px-4">ASSIGN TO TEACHER BATCH</th>
                   <th className="py-3 px-4 text-center">MOCKS COMPLETED</th>
                   <th className="py-3 px-4 text-center">AVERAGE SCORE</th>
                   <th className="py-3 px-4 text-center">READINESS STATUS</th>
@@ -207,18 +263,23 @@ export default function TrainerStudentsPage() {
                         <div className="text-xs text-[#64748B]">{s.email}</div>
                       </td>
                       <td className="py-3.5 px-4">
-                        <div className="font-medium text-slate-800">
-                          {s.batchCode ? (
-                            <span className="font-mono text-xs px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700 font-bold">
-                              {s.batchCode}
-                            </span>
-                          ) : (
-                            s.batch
-                          )}
+                        <div className="space-y-1">
+                          <select
+                            value={s.batchCode || ""}
+                            onChange={(e) => handleAssignBatch(s.id, s.fullName, e.target.value)}
+                            className="text-xs font-mono font-bold py-1 px-2.5 rounded-lg border border-slate-300 bg-white hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-800"
+                          >
+                            <option value="">-- Assign Batch --</option>
+                            {AVAILABLE_BATCHES.map((b) => (
+                              <option key={b.code} value={b.code}>
+                                {b.label}
+                              </option>
+                            ))}
+                          </select>
+                          <span className="text-[11px] font-medium text-slate-500 block">
+                            Track: {s.technology}
+                          </span>
                         </div>
-                        <span className="text-xs font-medium text-slate-500 mt-0.5 block">
-                          {s.technology}
-                        </span>
                       </td>
                       <td className="py-3.5 px-4 text-center font-bold text-slate-800">
                         {s.interviewsTaken} Sessions

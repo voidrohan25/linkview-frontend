@@ -23,6 +23,11 @@ export default function AuthCallbackPage() {
             session.user.user_metadata?.name ||
             email.split("@")[0];
 
+          const avatarUrl =
+            session.user.user_metadata?.avatar_url ||
+            session.user.user_metadata?.picture ||
+            undefined;
+
           if (typeof window !== "undefined") {
             localStorage.setItem(
               "linktest_current_user",
@@ -31,6 +36,7 @@ export default function AuthCallbackPage() {
                 email: email,
                 fullName: fullName,
                 role: "student",
+                avatarUrl,
               })
             );
             localStorage.setItem("linktest_current_role", "student");
@@ -39,7 +45,7 @@ export default function AuthCallbackPage() {
           const res = await fetch('/api/auth/me', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email }),
+            body: JSON.stringify({ email, fullName, avatarUrl }),
           });
           const authData = await res.json();
           if (authData.success) {
