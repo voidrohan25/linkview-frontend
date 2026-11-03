@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 import {
   LayoutDashboard,
   Users,
@@ -57,15 +58,68 @@ interface NavGroup {
 export function AppShell({
   children,
   role: inputRole,
-  userName = "Demo User",
-  userEmail = "user@linktest.io",
+  userName = "Candidate",
+  userEmail = "student@linktest.io",
 }: AppShellProps) {
   const role: NormalizedRole = inputRole === "super_admin" ? "admin" : inputRole;
   const pathname = usePathname();
   const router = useRouter();
 
+  const [activeUser, setActiveUser] = useState({ name: userName, email: userEmail });
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    // 1. Check client storage
+    try {
+      const saved = localStorage.getItem("linktest_current_user");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.fullName || parsed.email) {
+          setActiveUser({
+            name: parsed.fullName || parsed.email.split("@")[0],
+            email: parsed.email || userEmail,
+          });
+        }
+      }
+    } catch {}
+
+    // 2. Sync with Supabase Auth session if active
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user?.email) {
+        const resolvedName =
+          user.user_metadata?.full_name ||
+          user.user_metadata?.name ||
+          user.email.split("@")[0];
+        setActiveUser({
+          name: resolvedName,
+          email: user.email,
+        });
+        try {
+          localStorage.setItem(
+            "linktest_current_user",
+            JSON.stringify({
+              id: user.id,
+              email: user.email,
+              fullName: resolvedName,
+              role: role,
+            })
+          );
+        } catch {}
+      }
+    }).catch(() => {});
+  }, [role, userEmail]);
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch {}
+    try {
+      localStorage.removeItem("linktest_current_user");
+      localStorage.removeItem("linktest_current_role");
+    } catch {}
+    router.push("/login");
+  };
 
   useEffect(() => {
     try {
@@ -217,52 +271,44 @@ export function AppShell({
           <span>Timezone: Asia/Kolkata (IST)</span>
         </div>
 
-        {/* Right Role Switcher & Profile */}
+        {/* Right Role Badge & Authenticated Profile */}
         <div className="flex items-center gap-3">
-          {/* Quick Portal Switcher Pills */}
-          <div className="hidden sm:flex items-center bg-[#1E293B] p-1 rounded-lg border border-[#334155] text-xs">
-            <button
-              onClick={() => handleRoleSwitch("admin")}
-              className={`px-2 py-1 rounded font-semibold transition-colors ${
-                role === "admin" ? "bg-[#991B1B] text-white" : "text-slate-400 hover:text-white"
-              }`}
-            >
-              Admin
-            </button>
-            <button
-              onClick={() => handleRoleSwitch("trainer")}
-              className={`px-2 py-1 rounded font-semibold transition-colors ${
-                role === "trainer" ? "bg-[#2563EB] text-white" : "text-slate-400 hover:text-white"
-              }`}
-            >
-              Trainer
-            </button>
-            <button
-              onClick={() => handleRoleSwitch("student")}
-              className={`px-2 py-1 rounded font-semibold transition-colors ${
-                role === "student" ? "bg-[#EA580C] text-white" : "text-slate-400 hover:text-white"
-              }`}
-            >
-              Student
-            </button>
+          {/* Verified Active Portal Badge */}
+          <div
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold shadow-sm"
+            style={{
+              color: roleLabels[role].color,
+              background: roleLabels[role].bg,
+              border: `1px solid ${roleLabels[role].border}`,
+            }}
+          >
+            <span
+              className="w-2 h-2 rounded-full animate-pulse"
+              style={{ background: roleLabels[role].color }}
+            />
+            <span>{roleLabels[role].title}</span>
           </div>
 
-          {/* User Profile Pill */}
+          {/* Real User Profile & Logout */}
           <div className="flex items-center gap-2.5 pl-2 border-l border-slate-700">
-            <div className="h-8 w-8 rounded-full bg-[#1E293B] border border-slate-600 flex items-center justify-center text-xs font-bold text-orange-400">
-              {userName.slice(0, 2).toUpperCase()}
+            <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-[#EA580C] to-[#F97316] border border-orange-400/40 flex items-center justify-center text-xs font-bold text-white shadow-sm">
+              {activeUser.name ? activeUser.name.slice(0, 2).toUpperCase() : "ME"}
             </div>
-            <div className="hidden xl:flex flex-col text-left">
-              <span className="text-xs font-bold text-slate-200 leading-tight">{userName}</span>
-              <span className="text-[10px] text-slate-400 truncate max-w-[120px]">{userEmail}</span>
+            <div className="hidden sm:flex flex-col text-left">
+              <span className="text-xs font-bold text-slate-100 leading-tight truncate max-w-[150px]">
+                {activeUser.name}
+              </span>
+              <span className="text-[10px] text-slate-400 truncate max-w-[150px]">
+                {activeUser.email}
+              </span>
             </div>
-            <Link
-              href="/login"
-              className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-md transition-colors"
-              title="Logout"
+            <button
+              onClick={handleLogout}
+              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-md transition-colors"
+              title="Sign Out"
             >
               <LogOut size={16} />
-            </Link>
+            </button>
           </div>
         </div>
       </header>

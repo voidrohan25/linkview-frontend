@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
+import { supabase } from "@/lib/supabase";
 import {
   Calendar,
   Clock,
@@ -55,8 +56,8 @@ interface CommunicationTrack {
 export default function StudentDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [student, setStudent] = useState({
-    fullName: "Aarav Sharma",
-    email: "aarav.sharma@linktest.io",
+    fullName: "Student",
+    email: "student@linktest.io",
     batchName: "Python Full Stack Placement Cohort 2026-A",
   });
   const [nextInterview, setNextInterview] = useState<ScheduledInterview | null>(null);
@@ -66,11 +67,39 @@ export default function StudentDashboardPage() {
   const [countdown, setCountdown] = useState<string>("");
 
   useEffect(() => {
+    // 1. Sync real student profile from localStorage & Supabase
+    try {
+      const saved = localStorage.getItem("linktest_current_user");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.email) {
+          setStudent((prev) => ({
+            ...prev,
+            fullName: parsed.fullName || parsed.email.split("@")[0],
+            email: parsed.email,
+          }));
+        }
+      }
+    } catch {}
+
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user?.email) {
+        const name =
+          user.user_metadata?.full_name ||
+          user.user_metadata?.name ||
+          user.email.split("@")[0];
+        setStudent((prev) => ({
+          ...prev,
+          fullName: name,
+          email: user.email!,
+        }));
+      }
+    }).catch(() => {});
+
     fetch("/api/interviews?role=student")
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.data) {
-          if (data.data.student) setStudent(data.data.student);
           if (data.data.nextScheduledInterview) setNextInterview(data.data.nextScheduledInterview);
           if (data.data.upcomingInterviews) setUpcomingInterviews(data.data.upcomingInterviews);
           if (data.data.completedInterviews) setCompletedInterviews(data.data.completedInterviews);

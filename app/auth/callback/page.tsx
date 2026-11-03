@@ -18,6 +18,24 @@ export default function AuthCallbackPage() {
 
         if (session?.user?.email) {
           const email = session.user.email;
+          const fullName =
+            session.user.user_metadata?.full_name ||
+            session.user.user_metadata?.name ||
+            email.split("@")[0];
+
+          if (typeof window !== "undefined") {
+            localStorage.setItem(
+              "linktest_current_user",
+              JSON.stringify({
+                id: session.user.id,
+                email: email,
+                fullName: fullName,
+                role: "student",
+              })
+            );
+            localStorage.setItem("linktest_current_role", "student");
+          }
+
           const res = await fetch('/api/auth/me', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -25,9 +43,16 @@ export default function AuthCallbackPage() {
           });
           const authData = await res.json();
           if (authData.success) {
+            if (authData.user && typeof window !== "undefined") {
+              localStorage.setItem("linktest_current_user", JSON.stringify({
+                ...authData.user,
+                fullName: authData.user.fullName || fullName,
+              }));
+              localStorage.setItem("linktest_current_role", authData.role || "student");
+            }
             router.push(authData.redirectTo);
           } else {
-            setError(authData.error || 'Failed to determine account role.');
+            router.push('/student/dashboard');
           }
         } else {
           // If no active session detected, redirect to student login

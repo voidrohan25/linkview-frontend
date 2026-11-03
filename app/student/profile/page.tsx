@@ -1,13 +1,14 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { AppShell } from "@/components/layout/AppShell";
+import { supabase } from "@/lib/supabase";
 import { User, Mail, Phone, BookOpen, GraduationCap, ShieldCheck, CheckCircle2, Award } from "lucide-react";
 
 export default function StudentProfilePage() {
-  const [student] = useState({
-    fullName: "Aarav Sharma",
-    email: "aarav.sharma@linktest.io",
+  const [student, setStudent] = useState({
+    fullName: "Student",
+    email: "student@linktest.io",
     phone: "+91 98765 43210",
     batchName: "Python Full Stack Placement Cohort 2026-A",
     batchCode: "PY-2026-A",
@@ -18,6 +19,36 @@ export default function StudentProfilePage() {
     joinedDate: "January 15, 2026",
     assignedTrainer: "Rahul Sir (Lead Faculty)",
   });
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("linktest_current_user");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.email) {
+          setStudent((prev) => ({
+            ...prev,
+            fullName: parsed.fullName || parsed.email.split("@")[0],
+            email: parsed.email,
+          }));
+        }
+      }
+    } catch {}
+
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user?.email) {
+        const name =
+          user.user_metadata?.full_name ||
+          user.user_metadata?.name ||
+          user.email.split("@")[0];
+        setStudent((prev) => ({
+          ...prev,
+          fullName: name,
+          email: user.email!,
+        }));
+      }
+    }).catch(() => {});
+  }, []);
 
   return (
     <AppShell role="student" userName={student.fullName} userEmail={student.email}>
