@@ -50,8 +50,9 @@ export default function TrainerDashboardPage() {
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
+      const emailParam = trainerUser.email ? `&email=${encodeURIComponent(trainerUser.email)}` : "";
       const [intRes, bRes, sRes] = await Promise.all([
-        fetch("/api/interviews?role=trainer"),
+        fetch(`/api/interviews?role=trainer${emailParam}`),
         fetch("/api/batches"),
         fetch("/api/admin/users?role=student"),
       ]);

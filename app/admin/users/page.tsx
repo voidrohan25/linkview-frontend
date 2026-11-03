@@ -41,6 +41,7 @@ const AVAILABLE_BATCHES = [
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<PlatformUser[]>([]);
+  const [batches, setBatches] = useState<{ id: string; name: string; code: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -51,22 +52,78 @@ export default function AdminUsersPage() {
   const [newStudent, setNewStudent] = useState({
     fullName: "",
     email: "",
-    batchCode: "PY-2026-A",
+    batchCode: "UNASSIGNED",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Load Users from Backend
+  // 1. Initial rehydration from localStorage cache so students NEVER disappear
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem("linkview_admin_users_cache");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setUsers(parsed);
+          setLoading(false);
+        }
+      }
+    } catch {}
+
+    // Load dynamic batches
+    fetch("/api/batches")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data)) {
+          setBatches(json.data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Load Users from Backend with Resilient Merging
   const loadUsers = useCallback(async (silent = false) => {
     try {
       if (!silent) setLoading(true);
       const url = new URL("/api/admin/users", window.location.origin);
-      if (roleFilter !== "all") url.searchParams.set("role", roleFilter);
+      if (roleFilter !== "all" && roleFilter !== "unassigned") {
+        url.searchParams.set("role", roleFilter);
+      }
       if (searchTerm) url.searchParams.set("search", searchTerm);
 
       const res = await fetch(url.toString());
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
-        setUsers(json.data);
+        setUsers((prevUsers) => {
+          // Merge incoming users with previous users to guarantee NO student disappears
+          const userMap = new Map<string, PlatformUser>();
+
+          // Seed with existing users from memory/cache
+          for (const u of prevUsers) {
+            userMap.set(u.email.toLowerCase(), u);
+          }
+
+          // Overlay incoming users from API
+          for (const u of json.data) {
+            userMap.set(u.email.toLowerCase(), u);
+          }
+
+          const merged = Array.from(userMap.values());
+
+          try {
+            localStorage.setItem("linkview_admin_users_cache", JSON.stringify(merged));
+          } catch {}
+
+          // If local list has more users than server (cold start lambda), sync server
+          if (prevUsers.length > json.data.length && json.data.length > 0) {
+            fetch("/api/admin/users", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "sync_users", users: merged }),
+            }).catch(() => {});
+          }
+
+          return merged;
+        });
       }
     } catch (err) {
       console.error("Failed to load users:", err);
@@ -90,6 +147,11 @@ export default function AdminUsersPage() {
 
     setStatusMsg(null);
     try {
+      // Optimistic update
+      setUsers((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, role: "trainer" } : u))
+      );
+
       const res = await fetch("/api/admin/users", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -104,11 +166,12 @@ export default function AdminUsersPage() {
       if (json.success) {
         setStatusMsg({
           type: "success",
-          text: `Successfully promoted ${user.fullName} to Faculty Trainer! They can now access the Trainer Portal.`,
+          text: `Successfully promoted ${user.fullName} to Faculty Trainer! They will now appear in batch trainer assignments.`,
         });
-        await loadUsers();
+        await loadUsers(true);
       } else {
         setStatusMsg({ type: "error", text: json.error || "Failed to promote user." });
+        await loadUsers(true);
       }
     } catch {
       setStatusMsg({ type: "error", text: "Network error occurred." });
@@ -121,6 +184,11 @@ export default function AdminUsersPage() {
 
     setStatusMsg(null);
     try {
+      // Optimistic update
+      setUsers((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, role: "student" } : u))
+      );
+
       const res = await fetch("/api/admin/users", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -136,9 +204,10 @@ export default function AdminUsersPage() {
           type: "success",
           text: `Successfully demoted ${user.fullName} back to Student.`,
         });
-        await loadUsers();
+        await loadUsers(true);
       } else {
         setStatusMsg({ type: "error", text: json.error || "Failed to demote user." });
+        await loadUsers(true);
       }
     } catch {
       setStatusMsg({ type: "error", text: "Network error occurred." });
@@ -413,11 +482,16 @@ export default function AdminUsersPage() {
                             <span className="text-slate-400 font-mono text-[11px]">Institution Global</span>
                           ) : (
                             <select
-                              value={user.batchCode || "GLOBAL"}
+                              value={user.batchCode || "UNASSIGNED"}
                               onChange={(e) => handleBatchChange(user.id, e.target.value)}
-                              className="py-1 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 hover:border-slate-300 focus:outline-none focus:border-purple-600"
+                              className={`py-1 px-2.5 rounded-lg text-xs font-semibold focus:outline-none focus:border-purple-600 border ${
+                                !user.batchCode || user.batchCode === "UNASSIGNED"
+                                  ? "bg-amber-50 text-amber-800 border-amber-300 font-bold"
+                                  : "bg-slate-50 text-slate-800 border-slate-200"
+                              }`}
                             >
-                              {AVAILABLE_BATCHES.map((b) => (
+                              <option value="UNASSIGNED">Unassigned (No Batch)</option>
+                              {batches.map((b) => (
                                 <option key={b.code} value={b.code}>
                                   {b.name} ({b.code})
                                 </option>

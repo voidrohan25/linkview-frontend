@@ -70,6 +70,60 @@ export async function POST(req: Request) {
   }
 }
 
+// PATCH enroll or remove student from batch
+export async function PATCH(req: Request) {
+  try {
+    const body = await req.json();
+    const { action, batchCode, batchId, studentEmail, studentName } = body;
+
+    const targetCode = (batchCode || batchId || '').trim().toUpperCase();
+    if (!targetCode) {
+      return NextResponse.json({ success: false, error: 'Batch ID or Code is required' }, { status: 400 });
+    }
+
+    if (action === 'enroll_student') {
+      if (!studentEmail) {
+        return NextResponse.json({ success: false, error: 'Student email is required for enrollment' }, { status: 400 });
+      }
+
+      const updatedBatch = interviewStore.enrollStudentInBatch(targetCode, studentEmail);
+      if (!updatedBatch) {
+        return NextResponse.json({ success: false, error: `Batch ${targetCode} not found` }, { status: 404 });
+      }
+
+      // Update student's batchCode in usersStore
+      const updatedUser = updateUserBatch(studentEmail, updatedBatch.code);
+
+      return NextResponse.json({
+        success: true,
+        message: `Student ${studentName || studentEmail} successfully enrolled in ${updatedBatch.name} (${updatedBatch.code})`,
+        data: updatedBatch,
+        user: updatedUser,
+      });
+    }
+
+    if (action === 'remove_student') {
+      if (!studentEmail) {
+        return NextResponse.json({ success: false, error: 'Student email is required' }, { status: 400 });
+      }
+
+      const updatedBatch = interviewStore.removeStudentFromBatch(targetCode, studentEmail);
+      updateUserBatch(studentEmail, 'UNASSIGNED');
+
+      return NextResponse.json({
+        success: true,
+        message: `Student ${studentEmail} removed from batch ${targetCode}`,
+        data: updatedBatch,
+      });
+    }
+
+    return NextResponse.json({ success: false, error: 'Invalid batch action' }, { status: 400 });
+  } catch (err: unknown) {
+    const error = err as Error;
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
 // DELETE delete batch
 export async function DELETE(req: Request) {
   try {

@@ -140,6 +140,61 @@ if (!globalThis.__linkTestUsersState) {
 const state = globalThis.__linkTestUsersState;
 
 export function getAllUsers(): PlatformUser[] {
+  // Always synchronize with disk cache to prevent cold-start loss
+  const fromDisk = loadPersistedUsers();
+  if (fromDisk && Array.isArray(fromDisk.users)) {
+    for (const du of fromDisk.users) {
+      const idx = state.users.findIndex((u) => u.email.toLowerCase() === du.email.toLowerCase() || u.id === du.id);
+      if (idx === -1) {
+        state.users.push(du);
+      } else {
+        state.users[idx] = {
+          ...du,
+          ...state.users[idx],
+          // Preserve promoted trainer role or updated batch
+          role: state.users[idx].role === 'trainer' || du.role === 'trainer' ? 'trainer' : state.users[idx].role,
+          batchCode: state.users[idx].batchCode !== 'UNASSIGNED' ? state.users[idx].batchCode : du.batchCode,
+        };
+      }
+    }
+  }
+  return state.users;
+}
+
+/**
+ * Synchronize and merge an array of platform users (e.g. from client rehydration)
+ * Ensures no student or trainer is ever deleted or overwritten with lower privileges
+ */
+export function syncUsers(incomingUsers: PlatformUser[]): PlatformUser[] {
+  if (!Array.isArray(incomingUsers)) return getAllUsers();
+
+  for (const inc of incomingUsers) {
+    if (!inc.email) continue;
+    const norm = inc.email.trim().toLowerCase();
+    const existingIdx = state.users.findIndex((u) => u.email.toLowerCase() === norm || u.id === inc.id);
+    if (existingIdx === -1) {
+      state.users.push({
+        ...inc,
+        email: norm,
+        role: inc.role || 'student',
+        status: inc.status || 'active',
+        batchCode: inc.batchCode || 'UNASSIGNED',
+        joinedAt: inc.joinedAt || new Date().toISOString(),
+      });
+    } else {
+      const existing = state.users[existingIdx];
+      state.users[existingIdx] = {
+        ...existing,
+        fullName: inc.fullName || existing.fullName,
+        // Preserve role if promoted
+        role: existing.role === 'trainer' || inc.role === 'trainer' ? 'trainer' : (existing.role === 'super_admin' ? 'super_admin' : (inc.role || existing.role)),
+        batchCode: (inc.batchCode && inc.batchCode !== 'UNASSIGNED') ? inc.batchCode : existing.batchCode,
+        status: inc.status || existing.status,
+      };
+    }
+  }
+
+  savePersistedUsers(state);
   return state.users;
 }
 
@@ -161,6 +216,7 @@ export function getOrCreateGoogleUser(params: {
   fullName: string;
   avatarUrl?: string;
 }): PlatformUser {
+  getAllUsers(); // Ensure latest state from disk is loaded first
   const norm = params.email.trim().toLowerCase();
 
   // If this email is the configured fixed Admin, grant admin
@@ -178,6 +234,7 @@ export function getOrCreateGoogleUser(params: {
         avatarUrl: params.avatarUrl,
       };
       state.users.unshift(existing);
+      savePersistedUsers(state);
     }
     return existing;
   }
@@ -185,11 +242,18 @@ export function getOrCreateGoogleUser(params: {
   // Check if user already exists
   const existing = state.users.find((u) => u.email.toLowerCase() === norm);
   if (existing) {
+    if (params.fullName && !existing.fullName) {
+      existing.fullName = params.fullName;
+    }
+    if (params.avatarUrl && !existing.avatarUrl) {
+      existing.avatarUrl = params.avatarUrl;
+    }
+    savePersistedUsers(state);
     // Return existing account preserving its role (if Admin previously promoted them)
     return existing;
   }
 
-  // NEW Google Account: MUST ALWAYS BE 'student'
+  // NEW Google Account: MUST ALWAYS BE 'student', UNASSIGNED batch, ACTIVE
   const newUser: PlatformUser = {
     id: `stu-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     fullName: params.fullName || norm.split('@')[0],
@@ -304,6 +368,28 @@ export function toggleUserStatus(userId: string, status: 'active' | 'suspended')
 }
 
 export function getAllTrainers(): TrainerRecord[] {
+  // Sync latest users first
+  getAllUsers();
+  
+  // Combine registered trainers and any users whose role is currently 'trainer'
+  const trainerEmails = new Set(state.trainers.map((t) => t.email.toLowerCase()));
+  const trainerUsers = state.users.filter((u) => u.role === 'trainer');
+
+  for (const tu of trainerUsers) {
+    if (!trainerEmails.has(tu.email.toLowerCase())) {
+      state.trainers.push({
+        id: tu.id,
+        email: tu.email,
+        fullName: tu.fullName,
+        status: tu.status || 'active',
+        batchCodes: tu.batchCode ? [tu.batchCode] : ['GLOBAL'],
+        promotedAt: tu.joinedAt || new Date().toISOString(),
+        promotedBy: 'Admin',
+      });
+      trainerEmails.add(tu.email.toLowerCase());
+    }
+  }
+
   return state.trainers;
 }
 
@@ -378,6 +464,7 @@ export function addPlatformUser(params: {
   };
 
   state.users.push(newUser);
+  savePersistedUsers(state);
   return newUser;
 }
 
@@ -389,6 +476,7 @@ export function updatePlatformUserStatus(userId: string, status: 'active' | 'sus
   if (tr) {
     tr.status = status;
   }
+  savePersistedUsers(state);
   return user;
 }
 

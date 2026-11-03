@@ -8,6 +8,7 @@ import {
   demoteTrainerToStudent,
   updateUserBatch,
   deleteUser,
+  syncUsers,
   PlatformUser,
 } from '@/lib/usersStore';
 
@@ -107,7 +108,12 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   try {
     const body = await req.json();
-    const { userId, action, status, batchCodes } = body;
+    const { userId, action, status, batchCodes, users: incomingUsers } = body;
+
+    if (action === 'sync_users' && Array.isArray(incomingUsers)) {
+      const merged = syncUsers(incomingUsers);
+      return NextResponse.json({ success: true, message: 'Users synchronized successfully', data: merged });
+    }
 
     if (action === 'promote_to_trainer') {
       const success = promoteStudentToTrainer(userId, batchCodes || []);

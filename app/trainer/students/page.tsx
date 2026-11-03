@@ -28,23 +28,35 @@ interface StudentRecord {
   readiness?: string;
 }
 
-const AVAILABLE_BATCHES = [
-  { code: "PY-2026-A", label: "PY-2026-A (Python Track)", tech: "Python Full Stack" },
-  { code: "JAVA-2026-B", label: "JAVA-2026-B (Java Enterprise)", tech: "Java Enterprise" },
-  { code: "DSA-2026-C", label: "DSA-2026-C (DSA & Systems)", tech: "DSA & Algorithms" },
-  { code: "REACT-2026-D", label: "REACT-2026-D (Frontend & React)", tech: "React & Next.js" },
-  { code: "FULLSTACK-2026-E", label: "FULLSTACK-2026-E (Full Stack Placement)", tech: "MERN / Full Stack" },
-];
+interface BatchItem {
+  id: string;
+  name: string;
+  code: string;
+  technology: string;
+}
 
 export default function TrainerStudentsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [students, setStudents] = useState<StudentRecord[]>([]);
+  const [batches, setBatches] = useState<BatchItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [batchNotice, setBatchNotice] = useState<string | null>(null);
   const [trainerUser, setTrainerUser] = useState({
     name: "Faculty Trainer",
     email: "",
   });
+
+  const fetchBatches = async () => {
+    try {
+      const res = await fetch("/api/batches");
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setBatches(json.data);
+        }
+      }
+    } catch {}
+  };
 
   const fetchStudents = async () => {
     setLoading(true);
@@ -61,13 +73,7 @@ export default function TrainerStudentsPage() {
             role: u.role,
             batchCode: u.batchCode || "UNASSIGNED",
             batch: u.batchCode && u.batchCode !== "UNASSIGNED" ? `Batch ${u.batchCode}` : "Unassigned",
-            technology: u.batchCode?.startsWith("JAVA")
-              ? "Java Enterprise"
-              : u.batchCode?.startsWith("DSA")
-              ? "DSA & Algorithms"
-              : u.batchCode?.startsWith("PY")
-              ? "Python Full Stack"
-              : "General",
+            technology: u.batchCode && u.batchCode !== "UNASSIGNED" ? u.batchCode : "General",
             interviewsTaken: 0,
             avgScore: 0,
             readiness: u.batchCode && u.batchCode !== "UNASSIGNED" ? "Cohort Enrolled" : "Pending Assignment",
@@ -81,7 +87,6 @@ export default function TrainerStudentsPage() {
       console.warn("Could not fetch students from API:", e);
     }
 
-    // Clean initial state: zero dummy/fake student accounts
     setStudents([]);
     setLoading(false);
   };
@@ -100,23 +105,24 @@ export default function TrainerStudentsPage() {
       }
     } catch {}
 
+    fetchBatches();
     fetchStudents();
-    // Auto-poll every 3 seconds so new candidate sign-ins show up dynamically
     const pollTimer = setInterval(() => {
       fetchStudents();
     }, 3000);
     return () => clearInterval(pollTimer);
   }, []);
 
-  const handleAssignBatch = async (studentId: string, studentName: string, newBatch: string) => {
+  const handleAssignBatch = async (studentId: string, studentName: string, studentEmail: string, newBatch: string) => {
     try {
-      const res = await fetch("/api/admin/users", {
+      const res = await fetch("/api/batches", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "update_batch",
-          userId: studentId,
+          action: "enroll_student",
           batchCode: newBatch,
+          studentEmail: studentEmail,
+          studentName: studentName,
         }),
       });
 
@@ -128,13 +134,12 @@ export default function TrainerStudentsPage() {
                   ...s,
                   batchCode: newBatch,
                   batch: `Batch ${newBatch}`,
-                  technology:
-                    AVAILABLE_BATCHES.find((b) => b.code === newBatch)?.tech || s.technology,
+                  readiness: "Cohort Enrolled",
                 }
               : s
           )
         );
-        setBatchNotice(`Assigned ${studentName} to batch ${newBatch}!`);
+        setBatchNotice(`Candidate ${studentName} successfully enrolled into batch ${newBatch}!`);
         setTimeout(() => setBatchNotice(null), 4000);
       }
     } catch (e) {
@@ -245,13 +250,13 @@ export default function TrainerStudentsPage() {
                         <div className="space-y-1">
                           <select
                             value={s.batchCode || ""}
-                            onChange={(e) => handleAssignBatch(s.id, s.fullName, e.target.value)}
+                            onChange={(e) => handleAssignBatch(s.id, s.fullName, s.email, e.target.value)}
                             className="text-xs font-mono font-bold py-1 px-2.5 rounded-lg border border-slate-300 bg-white hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-800"
                           >
                             <option value="">-- Assign Batch --</option>
-                            {AVAILABLE_BATCHES.map((b) => (
+                            {batches.map((b) => (
                               <option key={b.code} value={b.code}>
-                                {b.label}
+                                {b.name} ({b.code})
                               </option>
                             ))}
                           </select>

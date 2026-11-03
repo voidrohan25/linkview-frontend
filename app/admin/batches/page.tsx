@@ -61,19 +61,55 @@ export default function AdminBatchesPage() {
 
       // 2. Fetch trainers for assignment
       const tRes = await fetch("/api/admin/users?role=trainer");
+      let trainerList: any[] = [];
       if (tRes.ok) {
         const tJson = await tRes.json();
-        const list = Array.isArray(tJson.data) ? tJson.data : (Array.isArray(tJson.users) ? tJson.users : []);
-        setTrainers(list);
+        trainerList = Array.isArray(tJson.data) ? tJson.data : (Array.isArray(tJson.users) ? tJson.users : []);
       }
+
+      // Check localStorage for any promoted trainers
+      try {
+        const cached = localStorage.getItem("linkview_admin_users_cache");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            const cachedTrainers = parsed.filter((u: any) => u.role === "trainer");
+            for (const ct of cachedTrainers) {
+              if (!trainerList.some((t) => t.email.toLowerCase() === ct.email.toLowerCase())) {
+                trainerList.push(ct);
+              }
+            }
+          }
+        }
+      } catch {}
+
+      setTrainers(trainerList);
 
       // 3. Fetch students to add to batch
       const sRes = await fetch("/api/admin/users?role=student");
+      let studentList: any[] = [];
       if (sRes.ok) {
         const sJson = await sRes.json();
-        const list = Array.isArray(sJson.data) ? sJson.data : (Array.isArray(sJson.users) ? sJson.users : []);
-        setStudents(list);
+        studentList = Array.isArray(sJson.data) ? sJson.data : (Array.isArray(sJson.users) ? sJson.users : []);
       }
+
+      // Merge with cached students
+      try {
+        const cached = localStorage.getItem("linkview_admin_users_cache");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            const cachedStudents = parsed.filter((u: any) => u.role === "student");
+            for (const cs of cachedStudents) {
+              if (!studentList.some((s) => s.email.toLowerCase() === cs.email.toLowerCase())) {
+                studentList.push(cs);
+              }
+            }
+          }
+        }
+      } catch {}
+
+      setStudents(studentList);
     } catch (e) {
       console.warn("Could not load batches:", e);
     } finally {
@@ -371,12 +407,17 @@ export default function AdminBatchesPage() {
                       className="form-select text-xs font-semibold"
                     >
                       <option value="Rahul Sir (Lead Faculty)">Rahul Sir (Lead Faculty)</option>
-                      {trainers.map((t) => (
-                        <option key={t.id} value={t.fullName}>
-                          {t.fullName} ({t.email})
-                        </option>
-                      ))}
+                      {trainers
+                        .filter((t) => t.fullName !== "Rahul Sir (Lead Faculty)")
+                        .map((t) => (
+                          <option key={t.id || t.email} value={t.fullName}>
+                            {t.fullName} ({t.email})
+                          </option>
+                        ))}
                     </select>
+                    <span className="text-[10px] text-slate-500 mt-1 block">
+                      Promote any registered student to Trainer in <Link href="/admin/users" className="text-blue-600 underline font-semibold">User Management</Link> to assign them here.
+                    </span>
                   </div>
                 </div>
 

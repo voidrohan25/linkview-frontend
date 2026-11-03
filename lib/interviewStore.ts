@@ -408,6 +408,37 @@ class InterviewStore {
     return false;
   }
 
+  enrollStudentInBatch(batchIdOrCode: string, studentEmail: string): BatchCohort | null {
+    const norm = batchIdOrCode.trim().toUpperCase();
+    const batch = this.batches.find((b) => b.id.toUpperCase() === norm || b.code.toUpperCase() === norm);
+    if (!batch) return null;
+
+    if (!Array.isArray(batch.students)) {
+      batch.students = [];
+    }
+    const cleanEmail = studentEmail.trim().toLowerCase();
+    if (!batch.students.map((e) => e.toLowerCase()).includes(cleanEmail)) {
+      batch.students.push(cleanEmail);
+      batch.studentCount = batch.students.length;
+      this.saveToDisk();
+    }
+    return batch;
+  }
+
+  removeStudentFromBatch(batchIdOrCode: string, studentEmail: string): BatchCohort | null {
+    const norm = batchIdOrCode.trim().toUpperCase();
+    const batch = this.batches.find((b) => b.id.toUpperCase() === norm || b.code.toUpperCase() === norm);
+    if (!batch) return null;
+
+    if (Array.isArray(batch.students)) {
+      const cleanEmail = studentEmail.trim().toLowerCase();
+      batch.students = batch.students.filter((e) => e.toLowerCase() !== cleanEmail);
+      batch.studentCount = batch.students.length;
+      this.saveToDisk();
+    }
+    return batch;
+  }
+
   getPendingApprovals(): InterviewSessionRecord[] {
     return this.interviews.filter((i) => i.approvalStatus === 'pending');
   }
@@ -614,9 +645,18 @@ class InterviewStore {
   // CRUD & Scheduling
   getStudents() { return this.students; }
   getTrainers() { return this.trainers; }
-  getBatches() { return this.batches; }
-  getQuestionBank() { return this.questionBank; }
-  getInterviews() { return this.interviews; }
+  getBatches() {
+    this.loadFromDisk();
+    return this.batches;
+  }
+  getQuestionBank() {
+    this.loadFromDisk();
+    return this.questionBank;
+  }
+  getInterviews() {
+    this.loadFromDisk();
+    return this.interviews;
+  }
   
   getInterviewById(id: string) {
     return this.interviews.find(i => i.id === id) || null;
