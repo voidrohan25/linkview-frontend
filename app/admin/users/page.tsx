@@ -55,9 +55,9 @@ export default function AdminUsersPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Load Users from Backend
-  const loadUsers = useCallback(async () => {
+  const loadUsers = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const url = new URL("/api/admin/users", window.location.origin);
       if (roleFilter !== "all") url.searchParams.set("role", roleFilter);
       if (searchTerm) url.searchParams.set("search", searchTerm);
@@ -70,12 +70,17 @@ export default function AdminUsersPage() {
     } catch (err) {
       console.error("Failed to load users:", err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [roleFilter, searchTerm]);
 
   useEffect(() => {
     loadUsers();
+    // Auto-poll every 3 seconds to instantly detect when a new student signs in
+    const interval = setInterval(() => {
+      loadUsers(true);
+    }, 3000);
+    return () => clearInterval(interval);
   }, [loadUsers]);
 
   // Promote Student to Trainer
@@ -224,8 +229,13 @@ export default function AdminUsersPage() {
           </div>
 
           <div className="flex items-center gap-2.5">
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+              <span>Live Auto-Sync (3s)</span>
+            </span>
+
             <button
-              onClick={loadUsers}
+              onClick={() => loadUsers(false)}
               className="btn btn-outline text-xs py-2 px-3 font-bold flex items-center gap-1.5"
               title="Refresh Roster"
             >

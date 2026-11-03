@@ -63,7 +63,7 @@ export default function StudentScorecardReportPage({
   };
 
   return (
-    <AppShell role="student" userName="Aarav Sharma" userEmail="aarav.sharma@linktest.io">
+    <AppShell role="student">
       <div className="max-w-[1100px] mx-auto space-y-6">
         {/* Top Action Nav */}
         <div className="flex items-center justify-between pb-4 border-b border-[#E2E8F0]">
@@ -117,7 +117,7 @@ export default function StudentScorecardReportPage({
             <div>
               <span className="text-slate-400 block mb-0.5">Candidate Name:</span>
               <span className="font-bold text-slate-900">
-                {interview?.studentName || "Aarav Sharma"}
+                {interview?.studentName || "Candidate"}
               </span>
             </div>
             <div>

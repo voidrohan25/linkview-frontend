@@ -58,19 +58,22 @@ interface NavGroup {
 export function AppShell({
   children,
   role: inputRole,
-  userName = "Candidate",
-  userEmail = "student@linktest.io",
+  userName,
+  userEmail,
 }: AppShellProps) {
   const role: NormalizedRole = inputRole === "super_admin" ? "admin" : inputRole;
   const pathname = usePathname();
   const router = useRouter();
 
-  const [activeUser, setActiveUser] = useState({ name: userName, email: userEmail });
+  const [activeUser, setActiveUser] = useState({
+    name: userName || (role === "admin" ? "Administrator" : role === "trainer" ? "Faculty Trainer" : "Candidate"),
+    email: userEmail || (role === "admin" ? "admin@linktest.io" : "candidate@linktest.io"),
+  });
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    // 1. Check authoritative client storage first
+    // 1. Check authoritative client storage first (highest priority)
     let storedUser: any = null;
     try {
       const saved = localStorage.getItem("linktest_current_user");
@@ -79,7 +82,7 @@ export function AppShell({
         if (storedUser.fullName || storedUser.email) {
           setActiveUser({
             name: storedUser.fullName || storedUser.email.split("@")[0],
-            email: storedUser.email || userEmail,
+            email: storedUser.email,
           });
         }
       }

@@ -16,7 +16,7 @@ export default function StudentPerformancePage() {
   ];
 
   return (
-    <AppShell role="student" userName="Aarav Sharma" userEmail="aarav.sharma@linktest.io">
+    <AppShell role="student">
       <div className="max-w-[1400px] mx-auto space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-[#E2E8F0] gap-4">
           <div>

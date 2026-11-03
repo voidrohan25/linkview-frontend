@@ -6,7 +6,7 @@ import { VoiceInterviewRoom } from "@/components/interview/VoiceInterviewRoom";
 
 export default function ActiveVoiceInterviewPage() {
   return (
-    <AppShell role="student" userName="Aarav Sharma" userEmail="aarav.sharma@linktest.io">
+    <AppShell role="student">
       <VoiceInterviewRoom defaultTrack="Python" />
     </AppShell>
   );

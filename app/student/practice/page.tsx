@@ -65,7 +65,7 @@ export default function StudentPracticePage() {
   ];
 
   return (
-    <AppShell role="student" userName="Aarav Sharma" userEmail="aarav.sharma@linktest.io">
+    <AppShell role="student">
       <div className="max-w-[1280px] mx-auto space-y-6">
         {/* Header */}
         <div className="p-6 rounded-2xl bg-white border border-[#E2E8F0] shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">

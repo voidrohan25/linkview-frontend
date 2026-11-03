@@ -75,58 +75,18 @@ export default function TrainerStudentsPage() {
       console.warn("Could not fetch students from API:", e);
     }
 
-    // Default fallback roster if API not yet populated
-    setStudents([
-      {
-        id: "std-101",
-        fullName: "Aarav Sharma",
-        email: "aarav.sharma@linktest.io",
-        batchCode: "PY-2026-A",
-        batch: "Python Full Stack 2026-A",
-        technology: "Python Full Stack",
-        interviewsTaken: 3,
-        avgScore: 84,
-        readiness: "High Readiness",
-      },
-      {
-        id: "std-102",
-        fullName: "Pooja Iyer",
-        email: "pooja.iyer@linktest.io",
-        batchCode: "JAVA-2026-B",
-        batch: "Java Enterprise Systems 2026-B",
-        technology: "Java Enterprise",
-        interviewsTaken: 4,
-        avgScore: 89,
-        readiness: "Placement Ready",
-      },
-      {
-        id: "std-103",
-        fullName: "Rohan Verma",
-        email: "rohan.verma@linktest.io",
-        batchCode: "DSA-2026-C",
-        batch: "DSA & Systems Placement Track",
-        technology: "DSA & Algorithms",
-        interviewsTaken: 2,
-        avgScore: 72,
-        readiness: "Needs Revision",
-      },
-      {
-        id: "std-104",
-        fullName: "Ananya Deshmukh",
-        email: "ananya.d@linktest.io",
-        batchCode: "PY-2026-A",
-        batch: "Python Full Stack 2026-A",
-        technology: "Python Full Stack",
-        interviewsTaken: 3,
-        avgScore: 91,
-        readiness: "Placement Ready",
-      },
-    ]);
+    // Clean initial state: zero dummy/fake student accounts
+    setStudents([]);
     setLoading(false);
   };
 
   useEffect(() => {
     fetchStudents();
+    // Auto-poll every 3 seconds so new candidate sign-ins show up dynamically
+    const pollTimer = setInterval(() => {
+      fetchStudents();
+    }, 3000);
+    return () => clearInterval(pollTimer);
   }, []);
 
   const handleAssignBatch = async (studentId: string, studentName: string, newBatch: string) => {

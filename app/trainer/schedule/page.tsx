@@ -88,12 +88,16 @@ export default function TrainerSchedulePage() {
               .map((q) => q.question)
           : undefined;
 
+      const selectedUser = studentsList.find((s) => s.id === selectedStudent);
+
       const res = await fetch("/api/interviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "schedule",
           studentId: selectedStudent,
+          studentName: selectedUser ? selectedUser.fullName : undefined,
+          studentEmail: selectedUser ? selectedUser.email : undefined,
           batchId: selectedBatch,
           technology,
           interviewType,
@@ -215,10 +219,7 @@ export default function TrainerSchedulePage() {
                       </option>
                     ))
                   ) : (
-                    <>
-                      <option value="std-101">Aarav Sharma (Python Full Stack 2026-A)</option>
-                      <option value="std-102">Pooja Iyer (Java Enterprise Systems 2026-B)</option>
-                    </>
+                    <option value="">-- No registered candidates found yet. (Sign in with Google to populate) --</option>
                   )}
                 </select>
               </div>

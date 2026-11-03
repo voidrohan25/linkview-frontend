@@ -68,6 +68,11 @@ export interface InterviewSessionRecord {
   questionCount: number;
   scheduledAt: string;
   status: 'scheduled' | 'in_progress' | 'completed' | 'pending_evaluation' | 'cancelled';
+  approvalStatus?: 'not_requested' | 'pending' | 'approved' | 'rejected';
+  approvalRequestedAt?: string;
+  approvalDecisionAt?: string;
+  approvedByTrainer?: string;
+  rejectionReason?: string;
   submissionReason?: 'normal' | 'proctoring_threshold_exceeded' | 'manual_stop';
   flagCount?: number;
   maxAllowedFlags?: number;
@@ -113,36 +118,9 @@ export interface InterviewSessionRecord {
   }>;
 }
 
-// Clean initial production state: configured with default enrolled cohort for Aarav Sharma
-const defaultStudents: StudentProfile[] = [
-  {
-    id: 'std-aarav-01',
-    fullName: 'Aarav Sharma',
-    email: 'aarav.sharma@linktest.io',
-    phone: '+91 98765 43210',
-    batchId: 'BATCH-PY-2026',
-    batchName: 'Python Full Stack Placement Cohort 2026-A',
-    technology: 'Python',
-    status: 'active',
-    interviewsCompleted: 1,
-    averageScore: 86,
-    joinedDate: '2026-01-15',
-  },
-];
-
-const defaultTrainers: TrainerProfile[] = [
-  {
-    id: 'tr-rahul-01',
-    fullName: 'Rahul Sir (Lead Faculty)',
-    email: 'rahul.lead@linktest.io',
-    specialization: 'Python & Distributed Systems',
-    assignedBatches: ['BATCH-PY-2026'],
-    status: 'active',
-    scheduledInterviews: 2,
-    pendingEvaluations: 0,
-    joinedDate: '2025-08-01',
-  },
-];
+// Clean initial production state: Zero dummy examinees or fake pre-filled students
+const defaultStudents: StudentProfile[] = [];
+const defaultTrainers: TrainerProfile[] = [];
 
 const defaultBatches: BatchCohort[] = [
   {
@@ -150,9 +128,31 @@ const defaultBatches: BatchCohort[] = [
     name: 'Python Full Stack Placement Cohort 2026-A',
     code: 'PY-2026-A',
     technology: 'Python',
-    trainerId: 'tr-rahul-01',
-    trainerName: 'Rahul Sir (Lead Faculty)',
-    studentCount: 28,
+    trainerId: 'tr-lead',
+    trainerName: 'Faculty Trainer',
+    studentCount: 0,
+    startDate: '2026-02-01',
+    status: 'ongoing',
+  },
+  {
+    id: 'BATCH-JAVA-2026',
+    name: 'Java Enterprise Systems 2026-B',
+    code: 'JAVA-2026-B',
+    technology: 'Java Enterprise',
+    trainerId: 'tr-lead',
+    trainerName: 'Faculty Trainer',
+    studentCount: 0,
+    startDate: '2026-02-01',
+    status: 'ongoing',
+  },
+  {
+    id: 'BATCH-DSA-2026',
+    name: 'DSA & Systems Placement Track',
+    code: 'DSA-2026-C',
+    technology: 'DSA & Algorithms',
+    trainerId: 'tr-lead',
+    trainerName: 'Faculty Trainer',
+    studentCount: 0,
     startDate: '2026-02-01',
     status: 'ongoing',
   },
@@ -251,94 +251,8 @@ const defaultQuestionBank: QuestionBankItem[] = [
   },
 ];
 
-const defaultInterviews: InterviewSessionRecord[] = [
-  {
-    id: 'int-2026-py01',
-    studentId: 'std-aarav-01',
-    studentName: 'Aarav Sharma',
-    studentEmail: 'aarav.sharma@linktest.io',
-    trainerId: 'tr-rahul-01',
-    trainerName: 'Rahul Sir (Lead Faculty)',
-    batchId: 'BATCH-PY-2026',
-    batchName: 'Python Full Stack Placement Cohort 2026-A',
-    technology: 'Python',
-    interviewType: 'technical',
-    difficulty: 'intermediate',
-    durationMinutes: 30,
-    questionCount: 3,
-    scheduledAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(), // 10 mins from now -> inside join window
-    status: 'scheduled',
-    currentTurn: 1,
-    totalTurns: 3,
-    currentQuestion: 'Explain how Python manages memory using the Global Interpreter Lock (GIL) and reference counting.',
-    history: [],
-    flagCount: 0,
-    maxAllowedFlags: 3,
-  },
-  {
-    id: 'int-2026-dsa01',
-    studentId: 'std-aarav-01',
-    studentName: 'Aarav Sharma',
-    studentEmail: 'aarav.sharma@linktest.io',
-    trainerId: 'tr-rahul-01',
-    trainerName: 'Rahul Sir (Lead Faculty)',
-    batchId: 'BATCH-PY-2026',
-    batchName: 'Python Full Stack Placement Cohort 2026-A',
-    technology: 'DSA',
-    interviewType: 'technical',
-    difficulty: 'intermediate',
-    durationMinutes: 30,
-    questionCount: 3,
-    scheduledAt: new Date(Date.now() - 86400000).toISOString(),
-    status: 'completed',
-    currentTurn: 3,
-    totalTurns: 3,
-    currentQuestion: 'How does a Bloom filter work and what are its trade-offs regarding false positives?',
-    history: [
-      {
-        turn: 1,
-        question: 'Given an array of integers, how would you find the subarray with the largest sum in O(n) time?',
-        studentAnswer: 'I used Kadane algorithm maintaining max_ending_here and max_so_far.',
-        feedback: 'Precise linear time explanation with clear corner-case handling.',
-        score: 9,
-      },
-      {
-        turn: 2,
-        question: 'What is the difference between Dijkstra algorithm and the Bellman-Ford algorithm for negative edge weights?',
-        studentAnswer: 'Dijkstra assumes non-negative weights using greedy priority queue; Bellman-Ford relaxes all edges |V|-1 times.',
-        feedback: 'Accurate distinction and complexity trade-offs explained.',
-        score: 8,
-      },
-      {
-        turn: 3,
-        question: 'How does a Bloom filter work and what are its trade-offs regarding false positives?',
-        studentAnswer: 'It uses bit arrays and k hash functions; false positives are possible, but false negatives are zero.',
-        feedback: 'Excellent grasp of probabilistic data structures.',
-        score: 9,
-      },
-    ],
-    scorecard: {
-      overallScore: 86,
-      technicalAccuracy: 88,
-      conceptualUnderstanding: 85,
-      communication: 87,
-      problemSolving: 84,
-      strengths: ['Clear grasp of algorithmic complexities and space-time trade-offs'],
-      weaknesses: ['Add concrete cache locality insights for array traversals'],
-      recommendations: ['Practice advanced graph dynamic programming'],
-      aiFeedback: 'Strong candidate readiness for product-based company rounds.',
-      evaluatedAt: new Date(Date.now() - 85000000).toISOString(),
-      proctoringSummary: {
-        totalFlags: 0,
-        tabSwitches: 0,
-        faceMissingCount: 0,
-        riskLevel: 'clean',
-      },
-    },
-    flagCount: 0,
-    maxAllowedFlags: 3,
-  },
-];
+// Clean initial state: Zero pre-existing mock interviews (Scheduled on-demand by Trainer)
+const defaultInterviews: InterviewSessionRecord[] = [];
 
 // Persistent state class in memory
 class InterviewStore {
@@ -347,6 +261,38 @@ class InterviewStore {
   private batches: BatchCohort[] = [...defaultBatches];
   private questionBank: QuestionBankItem[] = [...defaultQuestionBank];
   private interviews: InterviewSessionRecord[] = [...defaultInterviews];
+
+  // Request & Approval Lifecycle for Protected Mock Interviews
+  requestInterviewApproval(interviewId: string): InterviewSessionRecord | null {
+    const interview = this.interviews.find((i) => i.id === interviewId);
+    if (!interview) return null;
+    interview.approvalStatus = 'pending';
+    interview.approvalRequestedAt = new Date().toISOString();
+    return interview;
+  }
+
+  approveInterview(interviewId: string, trainerName: string = 'Faculty Trainer'): InterviewSessionRecord | null {
+    const interview = this.interviews.find((i) => i.id === interviewId);
+    if (!interview) return null;
+    interview.approvalStatus = 'approved';
+    interview.approvalDecisionAt = new Date().toISOString();
+    interview.approvedByTrainer = trainerName;
+    return interview;
+  }
+
+  rejectInterview(interviewId: string, trainerName: string = 'Faculty Trainer', reason?: string): InterviewSessionRecord | null {
+    const interview = this.interviews.find((i) => i.id === interviewId);
+    if (!interview) return null;
+    interview.approvalStatus = 'rejected';
+    interview.approvalDecisionAt = new Date().toISOString();
+    interview.approvedByTrainer = trainerName;
+    interview.rejectionReason = reason || 'Trainer declined candidate mock start request';
+    return interview;
+  }
+
+  getPendingApprovals(): InterviewSessionRecord[] {
+    return this.interviews.filter((i) => i.approvalStatus === 'pending');
+  }
 
   // Admin / Institute Metrics
   getAdminStats() {
@@ -408,23 +354,37 @@ class InterviewStore {
     };
   }
 
-  // Student queries
+  // Student queries - dynamic and scoped strictly to candidate's own email
   getStudentDashboard(studentEmail?: string) {
-    const student = this.students.find(s => s.email === studentEmail) || this.students[0] || {
-      id: 'student-active',
-      fullName: studentEmail ? studentEmail.split('@')[0] : 'Aarav Sharma',
-      email: studentEmail || 'aarav.sharma@linktest.io',
-      phone: '+91 98765 43210',
+    if (!studentEmail) {
+      return {
+        student: null,
+        nextScheduledInterview: null,
+        upcomingInterviews: [],
+        completedInterviews: [],
+        freeCommunicationTracks: [],
+        readinessScore: 0,
+        curriculumTracks: [],
+      };
+    }
+
+    const normEmail = studentEmail.trim().toLowerCase();
+    const student = this.students.find(s => s.email.toLowerCase() === normEmail) || {
+      id: `std-${normEmail}`,
+      fullName: normEmail.split('@')[0],
+      email: normEmail,
+      phone: '',
       batchId: 'BATCH-PY-2026',
-      batchName: 'Python Full Stack Placement Cohort 2026-A',
-      technology: 'Python',
+      batchName: 'Placement Cohort',
+      technology: 'Full Stack',
       status: 'active' as const,
-      interviewsCompleted: 1,
-      averageScore: 86,
-      joinedDate: '2026-01-15',
+      interviewsCompleted: 0,
+      averageScore: 0,
+      joinedDate: new Date().toISOString().split('T')[0],
     };
+
     const studentInterviews = this.interviews.filter(
-      i => (student && (i.studentId === student.id || i.studentEmail === student.email || i.studentEmail === 'aarav.sharma@linktest.io'))
+      i => i.studentEmail.toLowerCase() === normEmail || i.studentId === student.id
     );
 
     const upcoming = studentInterviews
@@ -441,68 +401,16 @@ class InterviewStore {
       .filter(i => i.status === 'completed')
       .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime());
 
-    // Free communication practice categories (Rule 2.1.F)
-    const freeCommunicationTracks = [
-      {
-        id: 'comm-intro',
-        title: 'Self Introduction & Elevator Pitch',
-        category: 'Communication',
-        description: 'Deliver a structured 90-second professional introduction highlighting tech stack and achievements.',
-        durationMinutes: 10,
-        freeAttemptsRemaining: 3,
-        trackId: 'communication',
-      },
-      {
-        id: 'comm-hr',
-        title: 'Basic HR & Behavioral Questions',
-        category: 'HR',
-        description: 'Answer standard HR inquiries on conflict management, team collaboration, and strengths.',
-        durationMinutes: 15,
-        freeAttemptsRemaining: 2,
-        trackId: 'hr',
-      },
-      {
-        id: 'comm-fluency',
-        title: 'English Fluency & Articulation',
-        category: 'Fluency',
-        description: 'Develop crisp verbal cadence, reduced filler words, and professional business vocabulary.',
-        durationMinutes: 12,
-        freeAttemptsRemaining: 3,
-        trackId: 'communication',
-      },
-      {
-        id: 'comm-workplace',
-        title: 'Workplace Situational Handling',
-        category: 'Behavioral',
-        description: 'Demonstrate leadership under pressure, cross-functional communication, and stakeholder management.',
-        durationMinutes: 15,
-        freeAttemptsRemaining: 2,
-        trackId: 'communication',
-      },
-      {
-        id: 'comm-confidence',
-        title: 'Speaking Confidence & Executive Presence',
-        category: 'Leadership',
-        description: 'Refine vocal tone, eye contact pacing, and persuasive technical storytelling for hiring managers.',
-        durationMinutes: 10,
-        freeAttemptsRemaining: 3,
-        trackId: 'communication',
-      },
-    ];
-
     return {
       student,
       nextScheduledInterview: nextScheduled,
       upcomingInterviews: upcoming,
       completedInterviews: completed,
-      freeCommunicationTracks,
-      readinessScore: student.averageScore || 86,
+      freeCommunicationTracks: [],
+      readinessScore: completed.length > 0 ? (student.averageScore || 85) : 0,
       curriculumTracks: [
-        { name: 'Python Core & Data Structures', progress: 75, mastery: 'Proficient' },
-        { name: 'Algorithms & Problem Solving', progress: 85, mastery: 'Advanced' },
-        { name: 'SQL & Database Optimization', progress: 60, mastery: 'Intermediate' },
-        { name: 'System Design & Distributed Patterns', progress: 40, mastery: 'In Progress' },
-        { name: 'HR & Behavioral Situational Round', progress: 90, mastery: 'Mastered' },
+        { name: 'Core Foundations & DSA', progress: completed.length > 0 ? 60 : 0, mastery: completed.length > 0 ? 'In Progress' : 'Unattempted' },
+        { name: 'Technical AI Mock Assessment', progress: completed.length > 0 ? 100 : 0, mastery: completed.length > 0 ? 'Completed' : 'Pending' },
       ],
     };
   }
@@ -586,6 +494,7 @@ class InterviewStore {
       questionCount: count,
       scheduledAt: data.scheduledAt || new Date(Date.now() + 86400000).toISOString(),
       status: 'scheduled',
+      approvalStatus: 'not_requested',
       currentTurn: 1,
       totalTurns: count,
       currentQuestion: initialQuestion,
