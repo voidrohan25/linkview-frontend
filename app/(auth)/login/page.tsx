@@ -19,6 +19,11 @@ export default function LoginPage() {
     setError(null);
 
     try {
+      // Clear any conflicting stale Supabase Google session before password login
+      if (!isGoogle && isSupabaseConfigured) {
+        await supabase.auth.signOut().catch(() => {});
+      }
+
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

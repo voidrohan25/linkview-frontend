@@ -70,23 +70,29 @@ export function AppShell({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    // 1. Check client storage
+    // 1. Check authoritative client storage first
+    let storedUser: any = null;
     try {
       const saved = localStorage.getItem("linktest_current_user");
       if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.fullName || parsed.email) {
+        storedUser = JSON.parse(saved);
+        if (storedUser.fullName || storedUser.email) {
           setActiveUser({
-            name: parsed.fullName || parsed.email.split("@")[0],
-            email: parsed.email || userEmail,
+            name: storedUser.fullName || storedUser.email.split("@")[0],
+            email: storedUser.email || userEmail,
           });
         }
       }
     } catch {}
 
-    // 2. Sync with Supabase Auth session if active
+    // 2. Only sync with Supabase Auth session if appropriate (never let an old student Google session overwrite Admin)
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user?.email) {
+        // If logged into admin portal, do not overwrite with student session
+        if (role === "admin" && storedUser && storedUser.role === "admin" && storedUser.email !== user.email) {
+          return;
+        }
+
         const resolvedName =
           user.user_metadata?.full_name ||
           user.user_metadata?.name ||

@@ -184,6 +184,17 @@ export function demoteTrainerToStudent(userId: string): boolean {
 }
 
 /**
+ * Admin / Faculty action: Assign or update student batch code
+ */
+export function updateUserBatch(userId: string, batchCode: string): PlatformUser | undefined {
+  const user = state.users.find((u) => u.id === userId || u.email.toLowerCase() === userId.toLowerCase());
+  if (!user) return undefined;
+
+  user.batchCode = batchCode;
+  return user;
+}
+
+/**
  * Admin action: Toggle user account status (active/suspended)
  */
 export function toggleUserStatus(userId: string, status: 'active' | 'suspended'): boolean {

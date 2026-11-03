@@ -6,6 +6,7 @@ import {
   createTrainerInvitation,
   promoteStudentToTrainer,
   demoteTrainerToStudent,
+  updateUserBatch,
   PlatformUser,
 } from '@/lib/usersStore';
 
@@ -120,6 +121,14 @@ export async function PATCH(req: Request) {
         return NextResponse.json({ success: false, error: 'User not found or cannot be demoted' }, { status: 400 });
       }
       return NextResponse.json({ success: true, message: 'User successfully demoted to Student' });
+    }
+
+    if (action === 'update_batch' || body.batchCode) {
+      const updated = updateUserBatch(userId, body.batchCode);
+      if (!updated) {
+        return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+      }
+      return NextResponse.json({ success: true, data: updated, message: `Batch updated to ${body.batchCode}` });
     }
 
     if (status) {
