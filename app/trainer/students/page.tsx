@@ -41,6 +41,10 @@ export default function TrainerStudentsPage() {
   const [students, setStudents] = useState<StudentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [batchNotice, setBatchNotice] = useState<string | null>(null);
+  const [trainerUser, setTrainerUser] = useState({
+    name: "Faculty Trainer",
+    email: "",
+  });
 
   const fetchStudents = async () => {
     setLoading(true);
@@ -50,21 +54,23 @@ export default function TrainerStudentsPage() {
         const json = await res.json();
         const list = Array.isArray(json.data) ? json.data : (Array.isArray(json.users) ? json.users : []);
         if (list.length > 0) {
-          const mapped: StudentRecord[] = list.map((u: any, idx: number) => ({
-            id: u.id || `std-${idx + 100}`,
+          const mapped: StudentRecord[] = list.map((u: any) => ({
+            id: u.id,
             fullName: u.fullName || u.email?.split("@")[0] || "Candidate",
             email: u.email,
             role: u.role,
-            batchCode: u.batchCode || "PY-2026-A",
-            batch: u.batchCode ? `Batch ${u.batchCode}` : "Python Full Stack 2026-A",
+            batchCode: u.batchCode || "UNASSIGNED",
+            batch: u.batchCode && u.batchCode !== "UNASSIGNED" ? `Batch ${u.batchCode}` : "Unassigned",
             technology: u.batchCode?.startsWith("JAVA")
               ? "Java Enterprise"
               : u.batchCode?.startsWith("DSA")
               ? "DSA & Algorithms"
-              : "Python Full Stack",
-            interviewsTaken: Math.floor(Math.random() * 3) + 1,
-            avgScore: 78 + (idx % 18),
-            readiness: (78 + (idx % 18)) >= 85 ? "Placement Ready" : "High Readiness",
+              : u.batchCode?.startsWith("PY")
+              ? "Python Full Stack"
+              : "General",
+            interviewsTaken: 0,
+            avgScore: 0,
+            readiness: u.batchCode && u.batchCode !== "UNASSIGNED" ? "Cohort Enrolled" : "Pending Assignment",
           }));
           setStudents(mapped);
           setLoading(false);
@@ -81,6 +87,19 @@ export default function TrainerStudentsPage() {
   };
 
   useEffect(() => {
+    try {
+      const saved = localStorage.getItem("linktest_current_user");
+      if (saved) {
+        const u = JSON.parse(saved);
+        if (u.fullName || u.email) {
+          setTrainerUser({
+            name: u.fullName || u.email.split("@")[0],
+            email: u.email,
+          });
+        }
+      }
+    } catch {}
+
     fetchStudents();
     // Auto-poll every 3 seconds so new candidate sign-ins show up dynamically
     const pollTimer = setInterval(() => {
@@ -132,7 +151,7 @@ export default function TrainerStudentsPage() {
   );
 
   return (
-    <AppShell role="trainer" userName="Rahul Sir (Lead Faculty)" userEmail="rahul.sir@linktest.io">
+    <AppShell role="trainer" userName={trainerUser.name} userEmail={trainerUser.email}>
       <div className="max-w-[1400px] mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-[#E2E8F0] gap-4">

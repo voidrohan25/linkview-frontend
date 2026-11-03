@@ -60,8 +60,15 @@ export default function TrainerImportQuestionsPage() {
   // Direct Scheduling Modal State
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [questionsToSchedule, setQuestionsToSchedule] = useState<QuestionBankItem[]>([]);
+  const [scheduleMode, setScheduleMode] = useState<"batch" | "student">("batch");
   const [candidates, setCandidates] = useState<any[]>([]);
   const [selectedCandidateId, setSelectedCandidateId] = useState("");
+  const [batches, setBatches] = useState<any[]>([]);
+  const [selectedBatchId, setSelectedBatchId] = useState("");
+  const [trainerUser, setTrainerUser] = useState({
+    name: "Faculty Trainer",
+    email: "trainer@linktest.io",
+  });
   const [scheduleTech, setScheduleTech] = useState("Python");
   const [scheduleDifficulty, setScheduleDifficulty] = useState<"beginner" | "intermediate" | "advanced">("intermediate");
   const [scheduleTimeMode, setScheduleTimeMode] = useState<"now" | "custom">("now");
@@ -86,8 +93,17 @@ export default function TrainerImportQuestionsPage() {
     }
   };
 
-  // Fetch Registered Students
-  const loadCandidates = async () => {
+  // Fetch Batches & Registered Students
+  const loadBatchesAndCandidates = async () => {
+    try {
+      const bRes = await fetch("/api/batches");
+      const bJson = await bRes.json();
+      if (bJson.success && Array.isArray(bJson.data) && bJson.data.length > 0) {
+        setBatches(bJson.data);
+        setSelectedBatchId(bJson.data[0].id);
+      }
+    } catch {}
+
     try {
       const res = await fetch("/api/admin/users?role=student");
       const json = await res.json();
@@ -95,23 +111,31 @@ export default function TrainerImportQuestionsPage() {
         setCandidates(json.data);
         setSelectedCandidateId(json.data[0].id);
       } else {
-        // Fallback default student option
-        setCandidates([
-          { id: "std-101", fullName: "Aarav Sharma", email: "aarav.sharma@linktest.io", batchCode: "PY-2026-A" },
-        ]);
-        setSelectedCandidateId("std-101");
+        setCandidates([]);
+        setSelectedCandidateId("");
       }
     } catch {
-      setCandidates([
-        { id: "std-101", fullName: "Aarav Sharma", email: "aarav.sharma@linktest.io", batchCode: "PY-2026-A" },
-      ]);
-      setSelectedCandidateId("std-101");
+      setCandidates([]);
+      setSelectedCandidateId("");
     }
   };
 
   useEffect(() => {
+    try {
+      const saved = localStorage.getItem("linktest_current_user");
+      if (saved) {
+        const u = JSON.parse(saved);
+        if (u.fullName || u.email) {
+          setTrainerUser({
+            name: u.fullName || u.email.split("@")[0],
+            email: u.email,
+          });
+        }
+      }
+    } catch {}
+
     loadQuestions();
-    loadCandidates();
+    loadBatchesAndCandidates();
   }, []);
 
   // 1. Submit Single Question
@@ -348,9 +372,20 @@ export default function TrainerImportQuestionsPage() {
     setScheduledSuccessData(null);
 
     try {
-      const candidate = candidates.find((c) => c.id === selectedCandidateId) || candidates[0];
-      const studentName = candidate?.fullName || "Enrolled Student";
-      const studentEmail = candidate?.email || "student@linktest.io";
+      let studentId: string | undefined = undefined;
+      let studentName: string | undefined = undefined;
+      let studentEmail: string | undefined = undefined;
+      let batchId: string | undefined = undefined;
+
+      if (scheduleMode === "batch") {
+        batchId = selectedBatchId;
+      } else {
+        const candidate = candidates.find((c) => c.id === selectedCandidateId) || candidates[0];
+        studentId = candidate?.id;
+        studentName = candidate?.fullName;
+        studentEmail = candidate?.email;
+        batchId = candidate?.batchCode;
+      }
 
       const scheduledAt =
         scheduleTimeMode === "now"
@@ -362,9 +397,12 @@ export default function TrainerImportQuestionsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "schedule",
-          studentId: candidate?.id || "std-101",
+          studentId,
           studentName,
           studentEmail,
+          batchId,
+          trainerName: trainerUser.name,
+          trainerId: trainerUser.email,
           technology: scheduleTech,
           interviewType: "technical",
           difficulty: scheduleDifficulty,
@@ -378,9 +416,12 @@ export default function TrainerImportQuestionsPage() {
       const json = await res.json();
       if (json.success) {
         setScheduledSuccessData(json.data);
+        const targetLabel = scheduleMode === "batch" 
+          ? `Batch Cohort (${batches.find(b => b.id === batchId)?.name || batchId})`
+          : (studentName || "Candidate");
         setStatusMsg({
           type: "success",
-          text: `AI Mock Interview successfully scheduled for ${studentName} (${scheduleTech}) with ${questionsToSchedule.length} imported questions!`,
+          text: `AI Mock Interview successfully scheduled for ${targetLabel} (${scheduleTech}) with ${questionsToSchedule.length} imported questions!`,
         });
       } else {
         alert(json.error || "Failed to schedule interview.");
@@ -418,7 +459,7 @@ export default function TrainerImportQuestionsPage() {
   });
 
   return (
-    <AppShell role="trainer" userName="Faculty Trainer" userEmail="trainer@linktest.io">
+    <AppShell role="trainer" userName={trainerUser.name} userEmail={trainerUser.email}>
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-[#E2E8F0] gap-3">
@@ -438,6 +479,24 @@ export default function TrainerImportQuestionsPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const target = selectedBankIds.length > 0
+                  ? bankQuestions.filter((q) => selectedBankIds.includes(q.id))
+                  : bankQuestions;
+                if (target.length === 0) {
+                  setStatusMsg({ type: "error", text: "Please create or select questions to schedule first." });
+                  return;
+                }
+                openScheduleModal(target);
+              }}
+              className="btn btn-primary text-xs py-2 px-4 font-bold flex items-center gap-1.5 bg-[#EA580C] hover:bg-[#C2410C] text-white shadow-sm"
+            >
+              <CalendarPlus size={15} />
+              <span>Schedule Interview with Bank</span>
+            </button>
+
             <Link
               href="/trainer/schedule"
               className="btn btn-outline text-xs py-2 px-3.5 font-bold flex items-center gap-1.5"
@@ -1049,24 +1108,77 @@ export default function TrainerImportQuestionsPage() {
                     </div>
                   </div>
 
-                  {/* Candidate Selection */}
-                  <div className="space-y-1">
+                  {/* Target Mode Selection: Batch vs Student */}
+                  <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-700 block">
-                      Select Target Candidate: <span className="text-red-500">*</span>
+                      Target Audience: <span className="text-red-500">*</span>
                     </label>
-                    <select
-                      value={selectedCandidateId}
-                      onChange={(e) => setSelectedCandidateId(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs font-semibold text-slate-800"
-                      required
-                    >
-                      {candidates.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.fullName} ({c.email}) {c.batchCode ? `• ${c.batchCode}` : ""}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setScheduleMode("batch")}
+                        className={`p-2.5 rounded-xl border text-center font-bold transition-all ${
+                          scheduleMode === "batch"
+                            ? "bg-orange-50 border-orange-500 text-orange-900 ring-1 ring-orange-500"
+                            : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        Entire Batch Cohort
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setScheduleMode("student")}
+                        className={`p-2.5 rounded-xl border text-center font-bold transition-all ${
+                          scheduleMode === "student"
+                            ? "bg-orange-50 border-orange-500 text-orange-900 ring-1 ring-orange-500"
+                            : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        Specific Student
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Target Selection Dropdown */}
+                  {scheduleMode === "batch" ? (
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">
+                        Select Target Batch:
+                      </label>
+                      <select
+                        value={selectedBatchId}
+                        onChange={(e) => setSelectedBatchId(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs font-semibold text-slate-800"
+                      >
+                        {batches.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.name} ({b.code})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">
+                        Select Target Candidate:
+                      </label>
+                      <select
+                        value={selectedCandidateId}
+                        onChange={(e) => setSelectedCandidateId(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs font-semibold text-slate-800"
+                      >
+                        {candidates.length > 0 ? (
+                          candidates.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.fullName} ({c.email}) {c.batchCode ? `• ${c.batchCode}` : ""}
+                            </option>
+                          ))
+                        ) : (
+                          <option value="">No enrolled students found yet</option>
+                        )}
+                      </select>
+                    </div>
+                  )}
 
                   {/* Tech & Difficulty */}
                   <div className="grid grid-cols-2 gap-3 text-xs">

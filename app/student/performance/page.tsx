@@ -1,22 +1,95 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
-import { Target, Sparkles, TrendingUp, Award, ArrowRight } from "lucide-react";
+import { Target, Sparkles, TrendingUp, Award, ArrowRight, BarChart3 } from "lucide-react";
+
+interface CompetencyTopic {
+  name: string;
+  mastery: number;
+  status: string;
+  color: string;
+}
 
 export default function StudentPerformancePage() {
-  const topics = [
-    { name: "Python Core & OOP", mastery: 92, status: "Advanced", color: "from-orange-500 to-amber-500" },
-    { name: "CPython Memory & GIL", mastery: 88, status: "Proficient", color: "from-blue-600 to-indigo-600" },
-    { name: "Algorithms & Kadane / Dynamic Programming", mastery: 74, status: "Intermediate", color: "from-emerald-500 to-teal-500" },
-    { name: "SQL Query Optimization & Indexes", mastery: 85, status: "Proficient", color: "from-purple-500 to-pink-500" },
-    { name: "System Design & Distributed Patterns", mastery: 68, status: "Developing", color: "from-slate-600 to-slate-800" },
-    { name: "Behavioral & STAR Communication", mastery: 90, status: "Advanced", color: "from-amber-500 to-orange-600" },
-  ];
+  const [topics, setTopics] = useState<CompetencyTopic[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [studentUser, setStudentUser] = useState({
+    name: "Candidate",
+    email: "",
+  });
+
+  useEffect(() => {
+    let resolvedEmail = "";
+    try {
+      const saved = localStorage.getItem("linktest_current_user");
+      if (saved) {
+        const u = JSON.parse(saved);
+        if (u.email) {
+          resolvedEmail = u.email;
+          setStudentUser({
+            name: u.fullName || u.email.split("@")[0],
+            email: u.email,
+          });
+        }
+      }
+    } catch {}
+
+    const url = resolvedEmail
+      ? `/api/interviews?role=student&email=${encodeURIComponent(resolvedEmail)}`
+      : `/api/interviews?role=student`;
+
+    fetch(url)
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && json.data) {
+          const completed: any[] = json.data.completedInterviews || [];
+          if (completed.length === 0) {
+            setTopics([]);
+          } else {
+            // Aggregate technology mastery from real scorecards
+            const techMap: Record<string, { totalScore: number; count: number }> = {};
+            completed.forEach((item) => {
+              const tech = item.technology || "General Technical";
+              const score = item.scorecard?.overallScore || 75;
+              if (!techMap[tech]) techMap[tech] = { totalScore: 0, count: 0 };
+              techMap[tech].totalScore += score;
+              techMap[tech].count += 1;
+            });
+
+            const colors = [
+              "from-orange-500 to-amber-500",
+              "from-blue-600 to-indigo-600",
+              "from-emerald-500 to-teal-500",
+              "from-purple-500 to-pink-500",
+              "from-amber-500 to-orange-600",
+            ];
+
+            const computedTopics: CompetencyTopic[] = Object.entries(techMap).map(
+              ([tech, stat], index) => {
+                const avg = Math.round(stat.totalScore / stat.count);
+                const status =
+                  avg >= 85 ? "Advanced" : avg >= 70 ? "Proficient" : "Developing";
+                return {
+                  name: `${tech} Competency`,
+                  mastery: avg,
+                  status,
+                  color: colors[index % colors.length],
+                };
+              }
+            );
+
+            setTopics(computedTopics);
+          }
+        }
+      })
+      .catch((err) => console.error("Error loading performance:", err))
+      .finally(() => setLoading(false));
+  }, []);
 
   return (
-    <AppShell role="student">
+    <AppShell role="student" userName={studentUser.name} userEmail={studentUser.email}>
       <div className="max-w-[1400px] mx-auto space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-[#E2E8F0] gap-4">
           <div>
@@ -34,37 +107,49 @@ export default function StudentPerformancePage() {
             </p>
           </div>
 
-          <Link href="/student/interview/active" className="btn btn-primary self-start sm:self-auto">
+          <Link href="/student/interview/active" className="btn btn-primary self-start sm:self-auto flex items-center gap-2">
             <Sparkles size={16} />
-            <span>Practice Weak Topics</span>
+            <span>Practice Voice Lab</span>
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {topics.map((t) => (
-            <div key={t.name} className="card p-6 bg-white border border-[#E2E8F0] space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-sm text-[#0F172A]">{t.name}</span>
-                <span className="text-xs font-bold text-slate-700">{t.mastery}%</span>
-              </div>
+        {loading ? (
+          <div className="py-12 text-center text-slate-400 text-xs">Computing performance radar...</div>
+        ) : topics.length === 0 ? (
+          <div className="p-10 rounded-2xl bg-white border border-[#E2E8F0] text-center space-y-3">
+            <BarChart3 size={36} className="text-slate-300 mx-auto" />
+            <h4 className="text-sm font-bold text-slate-800 m-0">No evaluated benchmarks yet</h4>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto m-0">
+              Complete assigned AI technical mock assessments to generate your skill mastery radar and weakness diagnosis.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {topics.map((t) => (
+              <div key={t.name} className="card p-6 bg-white border border-[#E2E8F0] space-y-3 rounded-2xl shadow-sm">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm text-[#0F172A]">{t.name}</span>
+                  <span className="text-xs font-bold text-slate-700">{t.mastery}%</span>
+                </div>
 
-              <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className={`h-full bg-gradient-to-r ${t.color} rounded-full transition-all duration-500`}
-                  style={{ width: `${t.mastery}%` }}
-                ></div>
-              </div>
+                <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full bg-gradient-to-r ${t.color} rounded-full transition-all duration-500`}
+                    style={{ width: `${Math.min(100, Math.max(5, t.mastery))}%` }}
+                  />
+                </div>
 
-              <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
-                <span>Tier: <strong className="text-slate-800">{t.status}</strong></span>
-                <Link href="/student/interview/active" className="text-blue-600 font-bold hover:underline flex items-center gap-1">
-                  <span>Targeted Drill</span>
-                  <ArrowRight size={12} />
-                </Link>
+                <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
+                  <span>Tier: <strong className="text-slate-800">{t.status}</strong></span>
+                  <Link href="/student/interview/active" className="text-blue-600 font-bold hover:underline flex items-center gap-1">
+                    <span>Targeted Drill</span>
+                    <ArrowRight size={12} />
+                  </Link>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </AppShell>
   );

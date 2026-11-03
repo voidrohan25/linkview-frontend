@@ -54,8 +54,25 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastChecked, setLastChecked] = useState<string>("Just now");
+  const [adminUser, setAdminUser] = useState({
+    name: "Rahul Sir (Founder & Admin)",
+    email: "rahul.sir@linktest.io",
+  });
 
   const loadData = async () => {
+    try {
+      const saved = localStorage.getItem("linktest_current_user");
+      if (saved) {
+        const u = JSON.parse(saved);
+        if (u.fullName || u.email) {
+          setAdminUser({
+            name: u.fullName || u.email.split("@")[0],
+            email: u.email,
+          });
+        }
+      }
+    } catch {}
+
     try {
       const res = await fetch("/api/interviews?role=admin");
       const json = await res.json();
@@ -73,6 +90,8 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     loadData();
+    const interval = setInterval(() => loadData(), 3000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleRefresh = () => {
@@ -81,7 +100,7 @@ export default function AdminDashboardPage() {
   };
 
   return (
-    <AppShell role="admin" userName="Rahul Sir (Founder & Admin)" userEmail="rahul.sir@linktest.io">
+    <AppShell role="admin" userName={adminUser.name} userEmail={adminUser.email}>
       <div className="max-w-[1400px] mx-auto space-y-6">
         {/* Top Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-5 border-b border-[#E2E8F0]">
@@ -144,7 +163,7 @@ export default function AdminDashboardPage() {
               </div>
             </div>
             <div className="text-3xl font-extrabold text-[#0F172A] leading-tight">
-              {stats?.totalBatches ?? 3}
+              {stats?.totalBatches ?? 0}
             </div>
             <div className="text-xs text-[#64748B] mt-1.5">
               Assigned student technology cohorts
@@ -161,7 +180,7 @@ export default function AdminDashboardPage() {
               </div>
             </div>
             <div className="text-3xl font-extrabold text-[#0F172A] leading-tight">
-              {stats?.totalStudents ?? 5}
+              {stats?.totalStudents ?? 0}
             </div>
             <div className="text-xs text-[#64748B] mt-1.5">
               Active candidates in mock preparation
@@ -178,10 +197,10 @@ export default function AdminDashboardPage() {
               </div>
             </div>
             <div className="text-3xl font-extrabold text-[#0F172A] leading-tight">
-              {stats?.totalTrainers ?? 3}
+              {stats?.totalTrainers ?? 0}
             </div>
             <div className="text-xs text-[#64748B] mt-1.5">
-              Assigned technical mentors & Rahul Sir
+              Assigned technical mentors & faculty
             </div>
           </div>
 
@@ -195,7 +214,7 @@ export default function AdminDashboardPage() {
               </div>
             </div>
             <div className="text-3xl font-extrabold text-[#0F172A] leading-tight">
-              {stats?.totalInterviews ?? 5}
+              {stats?.totalInterviews ?? 0}
             </div>
             <div className="text-xs text-[#64748B] mt-1.5">
               Scheduled & conducted interviews
@@ -208,7 +227,7 @@ export default function AdminDashboardPage() {
           <div className="card p-4 bg-white border border-[#E2E8F0]">
             <div className="text-xs font-semibold text-[#64748B]">COMPLETED SESSIONS</div>
             <div className="text-2xl font-bold text-[#059669] mt-1">
-              {stats?.completed ?? 2}
+              {stats?.completed ?? 0}
             </div>
             <div className="text-[11px] text-[#94A3B8] mt-1">Evaluated with full scorecards</div>
           </div>
@@ -216,7 +235,7 @@ export default function AdminDashboardPage() {
           <div className="card p-4 bg-white border border-[#E2E8F0]">
             <div className="text-xs font-semibold text-[#64748B]">UPCOMING INTERVIEWS</div>
             <div className="text-2xl font-bold text-[#2563EB] mt-1">
-              {stats?.upcoming ?? 2}
+              {stats?.upcoming ?? 0}
             </div>
             <div className="text-[11px] text-[#94A3B8] mt-1">Scheduled candidate slots</div>
           </div>
@@ -224,7 +243,7 @@ export default function AdminDashboardPage() {
           <div className="card p-4 bg-white border border-[#E2E8F0]">
             <div className="text-xs font-semibold text-[#64748B]">PENDING EVALUATION</div>
             <div className="text-2xl font-bold text-[#D97706] mt-1">
-              {stats?.pendingEvaluations ?? 1}
+              {stats?.pendingEvaluations ?? 0}
             </div>
             <div className="text-[11px] text-[#94A3B8] mt-1">Awaiting trainer sign-off</div>
           </div>
@@ -232,7 +251,7 @@ export default function AdminDashboardPage() {
           <div className="card p-4 bg-white border border-[#E2E8F0]">
             <div className="text-xs font-semibold text-[#64748B]">AVERAGE SCORE</div>
             <div className="text-2xl font-bold text-[#EA580C] mt-1">
-              {stats?.avgScore ?? 85}%
+              {stats?.avgScore ?? 0}%
             </div>
             <div className="text-[11px] text-[#94A3B8] mt-1">Across technical and HR rounds</div>
           </div>

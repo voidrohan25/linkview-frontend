@@ -1,13 +1,25 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { getAllUsers } from './usersStore';
 
 /**
  * LinkTest AI Mock Interview Platform - Master Central Store
  * Authoritative persistent store for institute batches, trainers, students, questions, scheduled interviews, and scorecards.
  */
 
-const INTERVIEW_CACHE_PATH = path.join(os.tmpdir(), 'linkview_interviews_persistent_cache.json');
+function getPersistencePaths(filename: string): string[] {
+  const paths: string[] = [];
+  try {
+    const dataDir = path.join(process.cwd(), '.data');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    paths.push(path.join(dataDir, filename));
+  } catch {}
+  paths.push(path.join(os.tmpdir(), filename));
+  return paths;
+}
 
 export interface StudentProfile {
   id: string;
@@ -274,42 +286,49 @@ class InterviewStore {
   }
 
   private loadFromDisk() {
-    try {
-      if (fs.existsSync(INTERVIEW_CACHE_PATH)) {
-        const raw = fs.readFileSync(INTERVIEW_CACHE_PATH, 'utf-8');
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.interviews)) this.interviews = parsed.interviews;
-        if (Array.isArray(parsed.batches) && parsed.batches.length > 0) this.batches = parsed.batches;
-        if (Array.isArray(parsed.students)) this.students = parsed.students;
-        if (Array.isArray(parsed.trainers)) this.trainers = parsed.trainers;
-        if (Array.isArray(parsed.questionBank) && parsed.questionBank.length > 0) {
-          this.questionBank = parsed.questionBank;
+    const paths = getPersistencePaths('linkview_interviews_persistent_cache.json');
+    for (const p of paths) {
+      try {
+        if (fs.existsSync(p)) {
+          const raw = fs.readFileSync(p, 'utf-8');
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed.interviews)) this.interviews = parsed.interviews;
+          if (Array.isArray(parsed.batches) && parsed.batches.length > 0) this.batches = parsed.batches;
+          if (Array.isArray(parsed.students)) this.students = parsed.students;
+          if (Array.isArray(parsed.trainers)) this.trainers = parsed.trainers;
+          if (Array.isArray(parsed.questionBank) && parsed.questionBank.length > 0) {
+            this.questionBank = parsed.questionBank;
+          }
+          return;
         }
+      } catch (e) {
+        console.warn(`Could not read persistent interviews cache from ${p}:`, e);
       }
-    } catch (e) {
-      console.warn('Could not read persistent interviews cache:', e);
     }
   }
 
   saveToDisk() {
-    try {
-      fs.writeFileSync(
-        INTERVIEW_CACHE_PATH,
-        JSON.stringify(
-          {
-            interviews: this.interviews,
-            batches: this.batches,
-            students: this.students,
-            trainers: this.trainers,
-            questionBank: this.questionBank,
-          },
-          null,
-          2
-        ),
-        'utf-8'
-      );
-    } catch (e) {
-      console.warn('Could not write persistent interviews cache:', e);
+    const paths = getPersistencePaths('linkview_interviews_persistent_cache.json');
+    for (const p of paths) {
+      try {
+        fs.writeFileSync(
+          p,
+          JSON.stringify(
+            {
+              interviews: this.interviews,
+              batches: this.batches,
+              students: this.students,
+              trainers: this.trainers,
+              questionBank: this.questionBank,
+            },
+            null,
+            2
+          ),
+          'utf-8'
+        );
+      } catch (e) {
+        // Fallback if path is read-only
+      }
     }
   }
 
@@ -319,7 +338,6 @@ class InterviewStore {
     if (!interview) return null;
     interview.approvalStatus = 'pending';
     interview.approvalRequestedAt = new Date().toISOString();
-    this.saveToDisk();
     this.saveToDisk();
     return interview;
   }
@@ -331,7 +349,6 @@ class InterviewStore {
     interview.approvalDecisionAt = new Date().toISOString();
     interview.approvedByTrainer = trainerName;
     this.saveToDisk();
-    this.saveToDisk();
     return interview;
   }
 
@@ -342,7 +359,6 @@ class InterviewStore {
     interview.approvalDecisionAt = new Date().toISOString();
     interview.approvedByTrainer = trainerName;
     interview.rejectionReason = reason || 'Trainer declined candidate mock start request';
-    this.saveToDisk();
     this.saveToDisk();
     return interview;
   }
@@ -396,37 +412,62 @@ class InterviewStore {
     return this.interviews.filter((i) => i.approvalStatus === 'pending');
   }
 
-  // Admin / Institute Metrics
+  // Admin / Institute Metrics — 100% computed from real database records
   getAdminStats() {
-    const totalStudents = this.students.length;
-    const totalTrainers = this.trainers.length;
+    const allUsers = getAllUsers();
+    const students = allUsers.filter((u) => u.role === 'student');
+    const trainers = allUsers.filter((u) => u.role === 'trainer');
+    
+    const totalStudents = students.length;
+    const totalTrainers = trainers.length;
+    const activeStudents = students.filter((s) => s.status === 'active').length;
+    const unassignedStudents = students.filter(
+      (s) => !s.batchCode || s.batchCode === 'UNASSIGNED' || s.batchCode === 'GLOBAL'
+    ).length;
+
     const totalBatches = this.batches.length;
     const totalInterviews = this.interviews.length;
-    const completed = this.interviews.filter(i => i.status === 'completed').length;
-    const upcoming = this.interviews.filter(i => i.status === 'scheduled').length;
-    const pendingEvaluations = this.interviews.filter(i => i.status === 'pending_evaluation').length;
-    
-    const completedWithScore = this.interviews.filter(i => i.scorecard && i.scorecard.overallScore > 0);
-    const avgScore = completedWithScore.length > 0
-      ? Math.round(completedWithScore.reduce((acc, curr) => acc + (curr.scorecard?.overallScore || 0), 0) / completedWithScore.length)
-      : 0;
+    const completed = this.interviews.filter((i) => i.status === 'completed').length;
+    const upcoming = this.interviews.filter((i) => i.status === 'scheduled').length;
+    const pendingRequests = this.interviews.filter((i) => i.approvalStatus === 'pending').length;
+    const approvedRequests = this.interviews.filter((i) => i.approvalStatus === 'approved').length;
+    const pendingEvaluations = this.interviews.filter((i) => i.status === 'pending_evaluation').length;
+
+    const completedWithScore = this.interviews.filter((i) => i.scorecard && i.scorecard.overallScore > 0);
+    const avgScore =
+      completedWithScore.length > 0
+        ? Math.round(
+            completedWithScore.reduce((acc, curr) => acc + (curr.scorecard?.overallScore || 0), 0) /
+              completedWithScore.length
+          )
+        : 0;
 
     return {
       totalStudents,
       totalTrainers,
+      activeStudents,
+      unassignedStudents,
       totalBatches,
       totalInterviews,
       completed,
       upcoming,
+      pendingRequests,
+      approvedRequests,
       pendingEvaluations,
       avgScore,
-      recentActivity: this.interviews.map(i => ({
+      recentActivity: this.interviews.map((i) => ({
         id: i.id,
         studentName: i.studentName,
+        studentEmail: i.studentEmail,
         technology: i.technology,
         difficulty: i.difficulty,
         status: i.status,
-        score: i.scorecard?.overallScore ?? (i.history.length > 0 ? Math.round(i.history.reduce((a, b) => a + b.score, 0) / i.history.length * 10) : null),
+        approvalStatus: i.approvalStatus || 'not_requested',
+        score:
+          i.scorecard?.overallScore ??
+          (i.history.length > 0
+            ? Math.round((i.history.reduce((a, b) => a + b.score, 0) / i.history.length) * 10)
+            : null),
         scheduledAt: i.scheduledAt,
       })),
       health: {
@@ -440,23 +481,54 @@ class InterviewStore {
     };
   }
 
-  // Trainer queries
-  getTrainerDashboard(trainerId?: string) {
-    const filter = trainerId ? (i: InterviewSessionRecord) => i.trainerId === trainerId : () => true;
-    const trainerInterviews = this.interviews.filter(filter);
-    
+  // Trainer queries — scoped to trainer identity
+  getTrainerDashboard(trainerEmail?: string) {
+    const allUsers = getAllUsers();
+    const students = allUsers.filter((u) => u.role === 'student');
+
+    let assignedBatches = this.batches;
+    if (trainerEmail) {
+      const normEmail = trainerEmail.trim().toLowerCase();
+      assignedBatches = this.batches.filter(
+        (b) =>
+          b.trainerId.toLowerCase() === normEmail ||
+          b.trainerName.toLowerCase().includes(normEmail)
+      );
+      if (assignedBatches.length === 0) {
+        assignedBatches = this.batches; // Fallback to all batches if lead trainer
+      }
+    }
+
+    const assignedBatchCodes = assignedBatches.map((b) => b.code.toUpperCase());
+    const assignedStudents = students.filter(
+      (s) => s.batchCode && assignedBatchCodes.includes(s.batchCode.toUpperCase())
+    );
+
+    const trainerInterviews = this.interviews.filter((i) => {
+      if (!trainerEmail) return true;
+      const norm = trainerEmail.toLowerCase();
+      return (
+        i.trainerId.toLowerCase() === norm ||
+        i.trainerName.toLowerCase().includes(norm) ||
+        assignedBatchCodes.includes(i.batchName?.toUpperCase() || '')
+      );
+    });
+
     return {
-      assignedBatchesCount: this.batches.length,
-      assignedStudentsCount: this.students.length,
-      scheduledCount: trainerInterviews.filter(i => i.status === 'scheduled').length,
-      completedCount: trainerInterviews.filter(i => i.status === 'completed').length,
-      pendingEvaluations: trainerInterviews.filter(i => i.status === 'pending_evaluation'),
-      todaySchedule: trainerInterviews.filter(i => i.status === 'scheduled'),
+      assignedBatchesCount: assignedBatches.length,
+      assignedStudentsCount: assignedStudents.length,
+      assignedBatches,
+      assignedStudents,
+      scheduledCount: trainerInterviews.filter((i) => i.status === 'scheduled').length,
+      completedCount: trainerInterviews.filter((i) => i.status === 'completed').length,
+      pendingRequestsCount: trainerInterviews.filter((i) => i.approvalStatus === 'pending').length,
+      pendingEvaluations: trainerInterviews.filter((i) => i.status === 'pending_evaluation'),
+      todaySchedule: trainerInterviews.filter((i) => i.status === 'scheduled'),
       recentInterviews: trainerInterviews.slice(0, 8),
     };
   }
 
-  // Student queries - dynamic and scoped strictly to candidate's own email
+  // Student queries - dynamic and scoped strictly to candidate's own email and enrolled batch
   getStudentDashboard(studentEmail?: string) {
     if (!studentEmail) {
       return {
@@ -471,28 +543,41 @@ class InterviewStore {
     }
 
     const normEmail = studentEmail.trim().toLowerCase();
-    const student = this.students.find(s => s.email.toLowerCase() === normEmail) || {
-      id: `std-${normEmail}`,
-      fullName: normEmail.split('@')[0],
+    const allUsers = getAllUsers();
+    const registeredUser = allUsers.find((u) => u.email.toLowerCase() === normEmail);
+    
+    // Find enrolled batch (either by batchCode or in batch.students roster)
+    const assignedBatch = this.batches.find(
+      (b) =>
+        (registeredUser?.batchCode && b.code.toUpperCase() === registeredUser.batchCode.toUpperCase()) ||
+        (Array.isArray(b.students) && b.students.some((e) => e.toLowerCase() === normEmail))
+    );
+
+    const student: StudentProfile = {
+      id: registeredUser?.id || `std-${normEmail}`,
+      fullName: registeredUser?.fullName || normEmail.split('@')[0],
       email: normEmail,
       phone: '',
-      batchId: 'BATCH-PY-2026',
-      batchName: 'Placement Cohort',
-      technology: 'Full Stack',
-      status: 'active' as const,
+      batchId: assignedBatch ? assignedBatch.id : '',
+      batchName: assignedBatch ? assignedBatch.name : (registeredUser?.batchCode || 'UNASSIGNED'),
+      technology: assignedBatch ? assignedBatch.technology : 'General',
+      status: (registeredUser?.status as 'active' | 'inactive') || 'active',
       interviewsCompleted: 0,
       averageScore: 0,
-      joinedDate: new Date().toISOString().split('T')[0],
+      joinedDate: registeredUser?.joinedAt || new Date().toISOString().split('T')[0],
     };
 
     const studentInterviews = this.interviews.filter(
-      i => i.studentEmail.toLowerCase() === normEmail || i.studentId === student.id
+      (i) =>
+        i.studentEmail.toLowerCase() === normEmail ||
+        i.studentId === student.id ||
+        (assignedBatch && (i.batchId === assignedBatch.id || i.batchName === assignedBatch.name || i.batchName === assignedBatch.code))
     );
 
     const upcoming = studentInterviews
-      .filter(i => i.status === 'scheduled')
+      .filter((i) => i.status === 'scheduled')
       .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
-      .map(i => ({
+      .map((i) => ({
         ...i,
         availability: this.getInterviewAvailability(i.scheduledAt, i.durationMinutes),
       }));
@@ -500,8 +585,14 @@ class InterviewStore {
     const nextScheduled = upcoming.length > 0 ? upcoming[0] : null;
 
     const completed = studentInterviews
-      .filter(i => i.status === 'completed')
+      .filter((i) => i.status === 'completed')
       .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime());
+
+    student.interviewsCompleted = completed.length;
+    if (completed.length > 0) {
+      const totalScore = completed.reduce((sum, item) => sum + (item.scorecard?.overallScore || 0), 0);
+      student.averageScore = Math.round(totalScore / completed.length);
+    }
 
     return {
       student,
@@ -509,10 +600,13 @@ class InterviewStore {
       upcomingInterviews: upcoming,
       completedInterviews: completed,
       freeCommunicationTracks: [],
-      readinessScore: completed.length > 0 ? (student.averageScore || 85) : 0,
+      readinessScore: student.averageScore || 0,
       curriculumTracks: [
-        { name: 'Core Foundations & DSA', progress: completed.length > 0 ? 60 : 0, mastery: completed.length > 0 ? 'In Progress' : 'Unattempted' },
-        { name: 'Technical AI Mock Assessment', progress: completed.length > 0 ? 100 : 0, mastery: completed.length > 0 ? 'Completed' : 'Pending' },
+        {
+          name: assignedBatch ? assignedBatch.technology : 'Core Foundations',
+          progress: completed.length > 0 ? Math.min(100, completed.length * 50) : 0,
+          mastery: completed.length > 0 ? 'Verified' : 'Unattempted',
+        },
       ],
     };
   }
@@ -583,6 +677,8 @@ class InterviewStore {
       : matchingQuestions[0]?.question || `Can you introduce your experience with ${tech} and core projects?`;
     const count = customList ? customList.length : (data.questionCount || 3);
 
+    const matchedBatch = this.batches.find(b => b.id === data.batchId || b.code === data.batchId);
+
     const newRecord: InterviewSessionRecord = {
       id: newId,
       studentId: student.id,
@@ -590,8 +686,8 @@ class InterviewStore {
       studentEmail: student.email,
       trainerId: trainer.id,
       trainerName: trainer.fullName,
-      batchId: student.batchId,
-      batchName: student.batchName,
+      batchId: data.batchId || student.batchId,
+      batchName: matchedBatch ? matchedBatch.name : (data.batchName || student.batchName),
       technology: tech,
       interviewType: data.interviewType || 'technical',
       difficulty: data.difficulty || 'intermediate',

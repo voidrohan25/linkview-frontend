@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import {
@@ -27,6 +27,7 @@ interface InterviewItem {
   interviewType: string;
   difficulty: string;
   status: string;
+  approvalStatus?: string;
   scheduledAt: string;
   scorecard?: {
     overallScore: number;
@@ -35,21 +36,68 @@ interface InterviewItem {
 
 export default function TrainerDashboardPage() {
   const [interviews, setInterviews] = useState<InterviewItem[]>([]);
-  const [filterTab, setFilterTab] = useState<"ALL" | "PENDING" | "COMPLETED">("PENDING");
+  const [batches, setBatches] = useState<any[]>([]);
+  const [students, setStudents] = useState<any[]>([]);
+  const [filterTab, setFilterTab] = useState<"ALL" | "PENDING" | "COMPLETED">("ALL");
   const [evaluatingId, setEvaluatingId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetch("/api/interviews?role=trainer")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.data && data.data.recentInterviews) {
-          setInterviews(data.data.recentInterviews);
-        }
-      })
-      .catch((err) => console.error("Failed to load trainer dashboard:", err));
+  const [trainerUser, setTrainerUser] = useState({
+    name: "Faculty Trainer",
+    email: "",
+  });
+
+  const loadData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const [intRes, bRes, sRes] = await Promise.all([
+        fetch("/api/interviews?role=trainer"),
+        fetch("/api/batches"),
+        fetch("/api/admin/users?role=student"),
+      ]);
+
+      const intJson = await intRes.json();
+      const bJson = await bRes.json();
+      const sJson = await sRes.json();
+
+      if (intJson.success && intJson.data) {
+        setInterviews(intJson.data.recentInterviews || []);
+      }
+      if (bJson.success && Array.isArray(bJson.data)) {
+        setBatches(bJson.data);
+      }
+      if (sJson.success && Array.isArray(sJson.data)) {
+        setStudents(sJson.data);
+      }
+    } catch (err) {
+      console.error("Failed to load trainer dashboard:", err);
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, []);
 
-  const pendingList = interviews.filter((i) => i.status === "pending_evaluation");
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("linktest_current_user");
+      if (saved) {
+        const u = JSON.parse(saved);
+        if (u.fullName || u.email) {
+          setTrainerUser({
+            name: u.fullName || u.email.split("@")[0],
+            email: u.email,
+          });
+        }
+      }
+    } catch {}
+
+    loadData(false);
+    const interval = setInterval(() => loadData(true), 3000);
+    return () => clearInterval(interval);
+  }, [loadData]);
+
+  const pendingList = interviews.filter(
+    (i) => i.status === "pending_evaluation" || i.approvalStatus === "pending"
+  );
   const completedList = interviews.filter((i) => i.status === "completed");
   const displayList =
     filterTab === "ALL"
@@ -67,7 +115,7 @@ export default function TrainerDashboardPage() {
         body: JSON.stringify({
           action: "approve_scorecard",
           interviewId: id,
-          remarks: "Verified and approved by trainer. Good conceptual understanding.",
+          remarks: `Verified and approved by ${trainerUser.name}. Good conceptual understanding.`,
           approved: true,
         }),
       });
@@ -86,9 +134,9 @@ export default function TrainerDashboardPage() {
   };
 
   return (
-    <AppShell role="trainer" userName="Rahul Sir (Lead Faculty)" userEmail="rahul.sir@linktest.io">
+    <AppShell role="trainer" userName={trainerUser.name} userEmail={trainerUser.email}>
       <div className="max-w-[1400px] mx-auto space-y-6">
-        {/* LinkTest Faculty Command Center Gradient Banner */}
+        {/* Faculty Command Center Gradient Banner */}
         <div
           className="rounded-2xl p-6 sm:p-8 text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-5"
           style={{ background: "linear-gradient(135deg, #1E3A8A 0%, #2563EB 100%)" }}
@@ -100,10 +148,10 @@ export default function TrainerDashboardPage() {
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mb-1">
-              Welcome back, Rahul Sir!
+              Welcome back, {trainerUser.name}!
             </h1>
             <p className="text-sm text-blue-100 max-w-xl">
-              Manage your cohort interview sessions, review AI evaluations, provide authoritative remarks, and conduct live mocks.
+              Manage your cohort interview sessions, review candidate start requests, and inspect real-time AI evaluations.
             </p>
           </div>
 
@@ -117,86 +165,77 @@ export default function TrainerDashboardPage() {
               <span>Schedule AI Mock</span>
             </Link>
             <Link
-              href="/trainer/conduct"
-              className="btn btn-outline text-xs py-2 px-4 font-bold bg-white text-[#1E3A8A] border-white hover:bg-blue-50"
+              href="/trainer/approvals"
+              className="btn btn-outline text-xs py-2 px-4 bg-white/10 hover:bg-white/20 text-white border-white/30 font-bold"
             >
-              <Video size={15} />
-              <span>Live Mock Studio</span>
+              <CheckCircle2 size={15} />
+              <span>Candidate Approvals</span>
             </Link>
           </div>
         </div>
 
-        {/* 4 Statistics Cards (Replicating LinkTest Faculty Dashboard) */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {/* 3 Metric Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <div className="card p-5 bg-white border border-[#E2E8F0]">
-            <div className="flex items-center gap-2 text-[#2563EB] mb-1">
-              <BookOpen size={16} />
-              <span className="text-xs font-bold uppercase tracking-wider">Assigned Batches</span>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-[#64748B] uppercase tracking-wider">
+                ASSIGNED BATCHES
+              </span>
+              <BookOpen size={18} className="text-[#2563EB]" />
             </div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-[#0F172A] mt-1">
-              3 Cohorts
+            <div className="text-3xl font-extrabold text-[#0F172A]">{batches.length}</div>
+            <div className="text-xs text-[#2563EB] font-semibold mt-1">
+              Active Institute Divisions
             </div>
           </div>
 
           <div className="card p-5 bg-white border border-[#E2E8F0]">
-            <div className="flex items-center gap-2 text-[#16A34A] mb-1">
-              <Users size={16} />
-              <span className="text-xs font-bold uppercase tracking-wider">Assigned Students</span>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-[#64748B] uppercase tracking-wider">
+                REGISTERED LEARNERS
+              </span>
+              <Users size={18} className="text-[#16A34A]" />
             </div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-[#16A34A] mt-1">
-              104 Mentees
-            </div>
-          </div>
-
-          <div className="card p-5 bg-white border border-[#E2E8F0]">
-            <div className="flex items-center gap-2 text-[#D97706] mb-1">
-              <AlertCircle size={16} />
-              <span className="text-xs font-bold uppercase tracking-wider">Pending Evaluation</span>
-            </div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-[#D97706] mt-1">
-              {pendingList.length} Awaiting
+            <div className="text-3xl font-extrabold text-[#0F172A]">{students.length}</div>
+            <div className="text-xs text-slate-500 mt-1">
+              Enrolled students in platform
             </div>
           </div>
 
           <div className="card p-5 bg-white border border-[#E2E8F0]">
-            <div className="flex items-center gap-2 text-[#9333EA] mb-1">
-              <CheckCircle2 size={16} />
-              <span className="text-xs font-bold uppercase tracking-wider">Completed Sessions</span>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-[#64748B] uppercase tracking-wider">
+                PENDING APPROVALS
+              </span>
+              <Clock size={18} className="text-[#EA580C]" />
             </div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-[#9333EA] mt-1">
-              {completedList.length} Graded
+            <div className="text-3xl font-extrabold text-[#0F172A]">
+              {pendingList.length}
+            </div>
+            <div className="text-xs text-orange-600 font-semibold mt-1">
+              {pendingList.length > 0 ? "Requests awaiting your approval" : "All queues cleared"}
             </div>
           </div>
         </div>
 
-        {/* Evaluation Queue Table (Exact LinkTest Mock Test Requests Replication) */}
-        <div className="card p-5 bg-white border border-[#E2E8F0] space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E2E8F0]">
+        {/* Recent Interviews / Queue */}
+        <div className="card p-0 overflow-hidden bg-white border border-[#E2E8F0] space-y-0">
+          <div className="p-4 sm:p-5 border-b border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-extrabold text-[#0F172A] m-0 flex items-center gap-2">
-                  <Sparkles size={18} className="text-[#2563EB]" />
-                  <span>Student Interview Evaluations</span>
-                </h3>
-                {pendingList.length > 0 && (
-                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-[#FEF3C7] text-[#B45309] border border-[#FCD34D]">
-                    {pendingList.length} PENDING
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-[#64748B] mt-0.5">
-                Review candidate audio transcripts, AI evaluations, add faculty remarks, and publish scores.
+              <h3 className="font-bold text-base text-[#0F172A] m-0">Recent Candidate Assessments</h3>
+              <p className="text-xs text-slate-500 mt-0.5 m-0">
+                Scheduled and completed turn-based technical mock sessions
               </p>
             </div>
 
-            <div className="flex items-center gap-1 bg-[#F1F5F9] p-1 rounded-lg">
-              {(["PENDING", "COMPLETED", "ALL"] as const).map((tab) => (
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
+              {(["ALL", "PENDING", "COMPLETED"] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setFilterTab(tab)}
-                  className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${
+                  className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${
                     filterTab === tab
-                      ? "bg-white text-[#0F172A] shadow-sm"
+                      ? "bg-white text-slate-900 shadow-sm"
                       : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
@@ -213,73 +252,92 @@ export default function TrainerDashboardPage() {
                   <th className="py-3 px-4">CANDIDATE</th>
                   <th className="py-3 px-4">TECHNOLOGY & TYPE</th>
                   <th className="py-3 px-4">SCHEDULED / SUBMITTED</th>
-                  <th className="py-3 px-4 text-center">STATUS</th>
+                  <th className="py-3 px-4 text-center">APPROVAL / STATUS</th>
                   <th className="py-3 px-4 text-right">ACTIONS</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E2E8F0]">
-                {displayList.map((item) => (
-                  <tr key={item.id} className="hover:bg-[#F8FAFC] transition-colors">
-                    <td className="py-3.5 px-4">
-                      <div className="font-bold text-[#0F172A]">{item.studentName}</div>
-                      <div className="text-xs text-[#64748B]">{item.studentEmail}</div>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <div className="font-semibold text-slate-800">{item.technology}</div>
-                      <span className="text-[11px] font-medium text-slate-500 capitalize">
-                        {item.interviewType} • {item.difficulty}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-xs text-slate-600">
-                      {new Date(item.scheduledAt).toLocaleDateString([], {
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      {item.status === "completed" ? (
-                        <span className="badge badge-success text-[11px]">Approved</span>
-                      ) : (
-                        <span className="badge badge-warning text-[11px]">Pending Review</span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      {item.status === "pending_evaluation" ? (
-                        <div className="inline-flex items-center gap-2">
-                          <button
-                            onClick={() => handleQuickApprove(item.id)}
-                            disabled={evaluatingId === item.id}
-                            className="btn btn-sm text-xs font-bold py-1 px-3 bg-[#16A34A] text-white hover:bg-emerald-700"
-                          >
-                            <Check size={13} />
-                            <span>{evaluatingId === item.id ? "Saving..." : "Approve Score"}</span>
-                          </button>
-                          <Link
-                            href="/trainer/approvals"
-                            className="btn btn-outline btn-sm text-xs py-1 px-2.5"
-                          >
-                            Add Remarks
-                          </Link>
-                        </div>
-                      ) : (
-                        <Link
-                          href={`/student/interview/${item.id}/report`}
-                          className="btn btn-outline btn-sm text-xs py-1 px-3"
-                        >
-                          View Scorecard
-                        </Link>
-                      )}
+                {loading && interviews.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-slate-400 text-xs">
+                      Loading mock sessions...
                     </td>
                   </tr>
-                ))}
+                ) : displayList.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-10 text-center text-slate-400 text-xs">
+                      No interviews in this tab. Click &quot;Schedule AI Mock&quot; to schedule candidate interviews.
+                    </td>
+                  </tr>
+                ) : (
+                  displayList.map((item) => (
+                    <tr key={item.id} className="hover:bg-[#F8FAFC] transition-colors">
+                      <td className="py-3.5 px-4">
+                        <div className="font-bold text-[#0F172A]">{item.studentName}</div>
+                        <div className="text-xs text-[#64748B]">{item.studentEmail}</div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="font-semibold text-slate-800">{item.technology}</div>
+                        <span className="text-[11px] font-medium text-slate-500 capitalize">
+                          {item.interviewType} • {item.difficulty}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-xs text-slate-600">
+                        {new Date(item.scheduledAt).toLocaleDateString([], {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        {item.status === "completed" ? (
+                          <span className="badge badge-success text-[11px]">Completed</span>
+                        ) : item.approvalStatus === "approved" ? (
+                          <span className="text-xs font-bold px-2.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                            Approved
+                          </span>
+                        ) : item.approvalStatus === "pending" ? (
+                          <span className="text-xs font-bold px-2.5 py-0.5 rounded bg-amber-100 text-amber-800 animate-pulse">
+                            Needs Approval
+                          </span>
+                        ) : (
+                          <span className="badge badge-blue text-[11px]">Scheduled</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        {item.status === "completed" ? (
+                          <Link
+                            href={`/student/interview/${item.id}/report`}
+                            className="btn btn-outline btn-sm text-xs py-1 px-3"
+                          >
+                            Scorecard
+                          </Link>
+                        ) : item.approvalStatus === "pending" ? (
+                          <Link
+                            href="/trainer/approvals"
+                            className="btn btn-primary btn-sm text-xs py-1 px-3 bg-amber-600 text-white hover:bg-amber-700"
+                          >
+                            Review Request
+                          </Link>
+                        ) : (
+                          <Link
+                            href="/trainer/approvals"
+                            className="btn btn-outline btn-sm text-xs py-1 px-3 text-slate-600"
+                          >
+                            Manage
+                          </Link>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
         </div>
 
-        {/* 2 Lower Cards: Assigned Cohorts & Today's Schedule */}
+        {/* 2 Lower Cards: Assigned Batches & Candidates */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div className="card p-5 bg-white border border-[#E2E8F0]">
             <div className="flex items-center justify-between mb-3">
@@ -291,60 +349,56 @@ export default function TrainerDashboardPage() {
                 View All Batches →
               </Link>
             </div>
-            <div className="space-y-2">
-              <div className="p-3 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0] flex items-center justify-between">
-                <div>
-                  <div className="font-bold text-xs text-slate-800">Java Enterprise Systems 2026-B</div>
-                  <div className="text-[11px] text-slate-500">34 Active Candidates</div>
-                </div>
-                <Link href="/trainer/schedule" className="btn btn-outline btn-sm text-xs py-1 px-2">
-                  Schedule Mock
-                </Link>
+            {batches.length === 0 ? (
+              <p className="text-xs text-slate-400 py-3 m-0">No cohorts assigned yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {batches.slice(0, 3).map((b) => (
+                  <div key={b.id} className="p-3 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0] flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-xs text-slate-800">{b.name}</div>
+                      <div className="text-[11px] text-slate-500 font-mono">
+                        Code: {b.code} • {b.students ? b.students.length : (b.studentCount || 0)} Students
+                      </div>
+                    </div>
+                    <Link href="/trainer/schedule" className="btn btn-outline btn-sm text-xs py-1 px-2">
+                      Schedule Mock
+                    </Link>
+                  </div>
+                ))}
               </div>
-
-              <div className="p-3 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0] flex items-center justify-between">
-                <div>
-                  <div className="font-bold text-xs text-slate-800">DSA & Systems Placement Track</div>
-                  <div className="text-[11px] text-slate-500">42 Active Candidates</div>
-                </div>
-                <Link href="/trainer/schedule" className="btn btn-outline btn-sm text-xs py-1 px-2">
-                  Schedule Mock
-                </Link>
-              </div>
-            </div>
+            )}
           </div>
 
           <div className="card p-5 bg-white border border-[#E2E8F0]">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-base font-bold text-[#0F172A] m-0 flex items-center gap-2">
                 <Users size={16} className="text-[#16A34A]" />
-                <span>Assigned Candidates</span>
+                <span>Registered Learners</span>
               </h3>
               <Link href="/trainer/students" className="text-xs font-bold text-[#16A34A] hover:underline">
                 View Student Rosters →
               </Link>
             </div>
-            <div className="space-y-2">
-              <div className="p-3 bg-emerald-50/50 rounded-lg border border-emerald-100 flex items-center justify-between">
-                <div>
-                  <div className="font-bold text-xs text-slate-800">Pooja Iyer (Java)</div>
-                  <div className="text-[11px] text-emerald-700 font-semibold">Latest Score: 93% · Placement Ready</div>
-                </div>
-                <Link href="/student/interview/int-2026-002/report" className="text-xs font-bold text-blue-600">
-                  Report
-                </Link>
+            {students.length === 0 ? (
+              <p className="text-xs text-slate-400 py-3 m-0">No students registered yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {students.slice(0, 3).map((st) => (
+                  <div key={st.id} className="p-3 bg-emerald-50/40 rounded-lg border border-emerald-100 flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-xs text-slate-800">{st.fullName}</div>
+                      <div className="text-[11px] text-slate-500">
+                        {st.email} • {st.batchCode || "Unassigned"}
+                      </div>
+                    </div>
+                    <Link href="/trainer/schedule" className="text-xs font-bold text-blue-600">
+                      Assign Mock
+                    </Link>
+                  </div>
+                ))}
               </div>
-
-              <div className="p-3 bg-emerald-50/50 rounded-lg border border-emerald-100 flex items-center justify-between">
-                <div>
-                  <div className="font-bold text-xs text-slate-800">Rohan Verma (DSA)</div>
-                  <div className="text-[11px] text-amber-700 font-semibold">Latest Score: 72% · Needs Follow-up</div>
-                </div>
-                <Link href="/trainer/approvals" className="text-xs font-bold text-amber-600">
-                  Review
-                </Link>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

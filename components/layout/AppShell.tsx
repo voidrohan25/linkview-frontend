@@ -470,39 +470,16 @@ export function AppShell({
                 ))}
               </div>
 
-              <div className="pt-4 border-t border-[#1E293B]">
-                <div className="flex flex-col gap-2">
-                  <span className="text-[11px] font-bold text-slate-400">Switch Portal:</span>
-                  <div className="grid grid-cols-3 gap-1">
-                    <button
-                      onClick={() => {
-                        handleRoleSwitch("admin");
-                        setMobileMenuOpen(false);
-                      }}
-                      className="px-2 py-1 rounded text-xs font-bold bg-[#991B1B] text-white"
-                    >
-                      Admin
-                    </button>
-                    <button
-                      onClick={() => {
-                        handleRoleSwitch("trainer");
-                        setMobileMenuOpen(false);
-                      }}
-                      className="px-2 py-1 rounded text-xs font-bold bg-[#2563EB] text-white"
-                    >
-                      Trainer
-                    </button>
-                    <button
-                      onClick={() => {
-                        handleRoleSwitch("student");
-                        setMobileMenuOpen(false);
-                      }}
-                      className="px-2 py-1 rounded text-xs font-bold bg-[#EA580C] text-white"
-                    >
-                      Student
-                    </button>
-                  </div>
-                </div>
+              {/* Verified Session Info in Mobile Drawer */}
+              <div className="pt-4 border-t border-[#1E293B] text-xs text-slate-400 flex items-center justify-between">
+                <span>{roleLabels[role].title}</span>
+                <button
+                  onClick={handleLogout}
+                  className="text-rose-400 hover:underline flex items-center gap-1 font-bold"
+                >
+                  <LogOut size={13} />
+                  <span>Sign Out</span>
+                </button>
               </div>
             </div>
           </div>

@@ -40,6 +40,10 @@ export default function TrainerApprovalsPage() {
   const [loading, setLoading] = useState(true);
   const [toastMsg, setToastMsg] = useState("");
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [trainerUser, setTrainerUser] = useState({
+    name: "Faculty Trainer",
+    email: "",
+  });
 
   const fetchApprovals = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -71,6 +75,19 @@ export default function TrainerApprovalsPage() {
   };
 
   useEffect(() => {
+    try {
+      const saved = localStorage.getItem("linktest_current_user");
+      if (saved) {
+        const u = JSON.parse(saved);
+        if (u.fullName || u.email) {
+          setTrainerUser({
+            name: u.fullName || u.email.split("@")[0],
+            email: u.email,
+          });
+        }
+      }
+    } catch {}
+
     fetchApprovals(false);
     // Real-time polling every 3 seconds so candidate requests pop up instantly
     const interval = setInterval(() => {
@@ -88,7 +105,7 @@ export default function TrainerApprovalsPage() {
         body: JSON.stringify({
           action,
           interviewId,
-          trainerName: "Rahul Sir (Lead Faculty)",
+          trainerName: trainerUser.name,
         }),
       });
 
@@ -126,7 +143,7 @@ export default function TrainerApprovalsPage() {
   };
 
   return (
-    <AppShell role="trainer" userName="Rahul Sir (Lead Faculty)" userEmail="rahul.sir@linktest.io">
+    <AppShell role="trainer" userName={trainerUser.name} userEmail={trainerUser.email}>
       <div className="max-w-[1300px] mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-[#E2E8F0] gap-4">

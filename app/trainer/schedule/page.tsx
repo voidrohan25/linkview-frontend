@@ -39,14 +39,42 @@ export default function TrainerSchedulePage() {
   const [availableBankQuestions, setAvailableBankQuestions] = useState<QuestionBankItem[]>([]);
   const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
   const [studentsList, setStudentsList] = useState<any[]>([]);
+  const [batchesList, setBatchesList] = useState<any[]>([]);
+  const [trainerUser, setTrainerUser] = useState({
+    name: "Rahul Sir (Lead Faculty)",
+    email: "rahul.sir@linktest.io",
+  });
 
-  // Load question bank and registered students
+  // Load question bank, registered students and batches
   useEffect(() => {
+    try {
+      const saved = localStorage.getItem("linktest_current_user");
+      if (saved) {
+        const u = JSON.parse(saved);
+        if (u.fullName || u.email) {
+          setTrainerUser({
+            name: u.fullName || u.email.split("@")[0],
+            email: u.email,
+          });
+        }
+      }
+    } catch {}
+
     fetch("/api/trainer/questions")
       .then((res) => res.json())
       .then((json) => {
         if (json.success) {
           setAvailableBankQuestions(json.data || []);
+        }
+      })
+      .catch(() => {});
+
+    fetch("/api/batches")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setBatchesList(json.data);
+          setSelectedBatch(json.data[0].id);
         }
       })
       .catch(() => {});
@@ -95,9 +123,11 @@ export default function TrainerSchedulePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "schedule",
-          studentId: selectedStudent,
-          studentName: selectedUser ? selectedUser.fullName : undefined,
-          studentEmail: selectedUser ? selectedUser.email : undefined,
+          studentId: mode === "student" ? selectedStudent : undefined,
+          studentName: mode === "student" && selectedUser ? selectedUser.fullName : undefined,
+          studentEmail: mode === "student" && selectedUser ? selectedUser.email : undefined,
+          trainerName: trainerUser.name,
+          trainerId: trainerUser.email,
           batchId: selectedBatch,
           technology,
           interviewType,
@@ -126,7 +156,7 @@ export default function TrainerSchedulePage() {
   };
 
   return (
-    <AppShell role="trainer" userName="Rahul Sir (Lead Faculty)" userEmail="rahul.sir@linktest.io">
+    <AppShell role="trainer" userName={trainerUser.name} userEmail={trainerUser.email}>
       <div className="max-w-3xl mx-auto space-y-6">
         {/* Header */}
         <div className="pb-5 border-b border-[#E2E8F0]">
@@ -231,9 +261,15 @@ export default function TrainerSchedulePage() {
                   onChange={(e) => setSelectedBatch(e.target.value)}
                   className="form-select text-xs"
                 >
-                  <option value="batch-py-01">Python Full Stack 2026-A (28 Students)</option>
-                  <option value="batch-jv-01">Java Enterprise Systems 2026-B (34 Students)</option>
-                  <option value="batch-dsa-01">DSA & Systems Placement Track (42 Students)</option>
+                  {batchesList.length > 0 ? (
+                    batchesList.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name} ({b.code}) • {b.students ? b.students.length : (b.studentCount || 0)} Students
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">-- No institute cohorts found yet. (Create in Admin Batches) --</option>
+                  )}
                 </select>
               </div>
             )}

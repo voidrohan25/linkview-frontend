@@ -17,7 +17,8 @@ import {
 } from "lucide-react";
 
 export default function TrainerConductPage() {
-  const [candidate, setCandidate] = useState("Aarav Sharma");
+  const [candidate, setCandidate] = useState("Enrolled Candidate");
+  const [candidatesList, setCandidatesList] = useState<any[]>([]);
   const [technology, setTechnology] = useState("Python Full Stack");
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [technicalScore, setTechnicalScore] = useState(8);
@@ -25,6 +26,36 @@ export default function TrainerConductPage() {
   const [trainerNotes, setTrainerNotes] = useState("");
   const [sessionActive, setSessionActive] = useState(false);
   const [completed, setCompleted] = useState(false);
+
+  const [trainerUser, setTrainerUser] = useState({
+    name: "Faculty Trainer",
+    email: "",
+  });
+
+  React.useEffect(() => {
+    try {
+      const saved = localStorage.getItem("linktest_current_user");
+      if (saved) {
+        const u = JSON.parse(saved);
+        if (u.fullName || u.email) {
+          setTrainerUser({
+            name: u.fullName || u.email.split("@")[0],
+            email: u.email,
+          });
+        }
+      }
+    } catch {}
+
+    fetch("/api/admin/users?role=student")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setCandidatesList(json.data);
+          setCandidate(json.data[0].fullName);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const questions = [
     "Explain how Python manages memory using the Global Interpreter Lock (GIL) and reference counting.",
@@ -42,7 +73,7 @@ export default function TrainerConductPage() {
   };
 
   return (
-    <AppShell role="trainer" userName="Rahul Sir (Lead Faculty)" userEmail="rahul.sir@linktest.io">
+    <AppShell role="trainer" userName={trainerUser.name} userEmail={trainerUser.email}>
       <div className="max-w-[1400px] mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-[#E2E8F0] gap-4">

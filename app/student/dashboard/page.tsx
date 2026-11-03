@@ -82,6 +82,14 @@ export default function StudentDashboardPage() {
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.data) {
+          if (data.data.student) {
+            setStudent((prev) => ({
+              ...prev,
+              fullName: data.data.student.fullName || prev.fullName,
+              email: data.data.student.email || prev.email,
+              batchName: data.data.student.batchName || "UNASSIGNED",
+            }));
+          }
           setNextInterview(data.data.nextScheduledInterview || null);
           setUpcomingInterviews(data.data.upcomingInterviews || []);
           setCompletedInterviews(data.data.completedInterviews || []);
@@ -241,6 +249,16 @@ export default function StudentDashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* Unassigned Notice if not yet enrolled in an institute cohort */}
+        {(!student.batchName || student.batchName === "UNASSIGNED") && (
+          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-3">
+            <AlertCircle size={20} className="text-amber-600 shrink-0" />
+            <div>
+              <strong>No batch assigned yet:</strong> Your account is registered, but you have not yet been assigned to a cohort. Please contact your institute administrator to allocate your batch and schedule technical mock interviews.
+            </div>
+          </div>
+        )}
 
         {/* B. NEXT SCHEDULED MOCK INTERVIEW — WITH TRAINER APPROVAL WORKFLOW */}
         {nextInterview ? (

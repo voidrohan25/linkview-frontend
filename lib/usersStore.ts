@@ -42,28 +42,45 @@ declare global {
   var __linkTestUsersState: GlobalUsersState | undefined;
 }
 
-const USERS_CACHE_PATH = path.join(os.tmpdir(), 'linkview_users_persistent_cache.json');
+function getPersistencePaths(filename: string): string[] {
+  const paths: string[] = [];
+  try {
+    const dataDir = path.join(process.cwd(), '.data');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    paths.push(path.join(dataDir, filename));
+  } catch {}
+  paths.push(path.join(os.tmpdir(), filename));
+  return paths;
+}
 
 function loadPersistedUsers(): GlobalUsersState | null {
-  try {
-    if (fs.existsSync(USERS_CACHE_PATH)) {
-      const raw = fs.readFileSync(USERS_CACHE_PATH, 'utf-8');
-      const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.users) && parsed.users.length > 0) {
-        return parsed;
+  const paths = getPersistencePaths('linkview_users_persistent_cache.json');
+  for (const p of paths) {
+    try {
+      if (fs.existsSync(p)) {
+        const raw = fs.readFileSync(p, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.users) && parsed.users.length > 0) {
+          return parsed;
+        }
       }
+    } catch (e) {
+      console.warn(`Could not read users cache from ${p}:`, e);
     }
-  } catch (e) {
-    console.warn('Could not read users cache:', e);
   }
   return null;
 }
 
 export function savePersistedUsers(st: GlobalUsersState) {
-  try {
-    fs.writeFileSync(USERS_CACHE_PATH, JSON.stringify(st, null, 2), 'utf-8');
-  } catch (e) {
-    console.warn('Could not write users cache:', e);
+  const paths = getPersistencePaths('linkview_users_persistent_cache.json');
+  for (const p of paths) {
+    try {
+      fs.writeFileSync(p, JSON.stringify(st, null, 2), 'utf-8');
+    } catch (e) {
+      // In serverless, process.cwd() may be read-only; os.tmpdir will succeed
+    }
   }
 }
 
@@ -179,6 +196,7 @@ export function getOrCreateGoogleUser(params: {
     email: norm,
     role: 'student', // STRICT DEFAULT
     status: 'active',
+    batchCode: 'UNASSIGNED',
     joinedAt: new Date().toISOString(),
     avatarUrl: params.avatarUrl,
   };
