@@ -149,7 +149,7 @@ export default function TrainerDashboardPage() {
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-white/20 text-white border border-white/30">
-                Faculty Command Center
+                Technical Evaluator Studio
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mb-1">

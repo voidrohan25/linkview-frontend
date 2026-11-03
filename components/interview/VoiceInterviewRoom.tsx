@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useAuth } from "@/lib/authContext";
 import {
   Mic,
   MicOff,
@@ -38,6 +39,8 @@ export function VoiceInterviewRoom({
   defaultTrack = "Python",
 }: VoiceInterviewRoomProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user: authUser } = useAuth();
 
   // Pre-flight check modal state
   const [preflightOpen, setPreflightOpen] = useState(true);
@@ -64,6 +67,35 @@ export function VoiceInterviewRoom({
   const [currentQuestion, setCurrentQuestion] = useState<string>(
     "Explain how Python manages memory using the Global Interpreter Lock (GIL) and reference counting."
   );
+
+  useEffect(() => {
+    const sid = searchParams?.get("sessionId") || initialSessionId;
+    const mode = searchParams?.get("mode");
+    const trackParam = searchParams?.get("track");
+
+    if (sid) {
+      setSessionId(sid);
+      fetch(`/api/interviews?id=${sid}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.data) {
+            if (data.data.technology) setTrack(data.data.technology);
+            if (data.data.currentQuestion) setCurrentQuestion(data.data.currentQuestion);
+            if (data.data.currentTurn) setCurrentTurn(data.data.currentTurn);
+            if (data.data.totalTurns) setTotalTurns(data.data.totalTurns);
+            if (data.data.difficulty) setDifficulty(data.data.difficulty);
+          }
+        })
+        .catch(() => {});
+    }
+
+    if (mode === "text") {
+      setTextModeOnly(true);
+    }
+    if (trackParam) {
+      setTrack(trackParam);
+    }
+  }, [searchParams, initialSessionId]);
   const [studentAnswer, setStudentAnswer] = useState<string>("");
   const [interimText, setInterimText] = useState<string>("");
   const [isListening, setIsListening] = useState<boolean>(false);
@@ -455,7 +487,7 @@ export function VoiceInterviewRoom({
         body: JSON.stringify({
           track: track.toLowerCase(),
           difficulty,
-          studentName: "Aarav Sharma",
+          studentName: authUser?.fullName || "Candidate",
         }),
       });
 

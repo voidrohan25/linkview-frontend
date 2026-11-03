@@ -166,16 +166,18 @@ export function AppShell({
         groupTitle: "CANDIDATE PORTAL",
         items: [
           { label: "Dashboard", href: "/student/dashboard", icon: LayoutDashboard },
-          { label: "My Interviews", href: "/student/interviews", icon: Sparkles, badge: "AI" },
-          { label: "Voice Interview Room", href: "/student/interview/active", icon: Mic },
+          { label: "Configure Mock", href: "/student/interview/setup", icon: Sparkles, badge: "NEW" },
+          { label: "Active Interview Room", href: "/student/interview/active", icon: Mic },
+          { label: "AI Interview Coach", href: "/student/practice", icon: BookOpen },
         ],
       },
       {
-        groupTitle: "PRACTICE & REPORTS",
+        groupTitle: "PREPARATION & ANALYTICS",
         items: [
-          { label: "Practice", href: "/student/practice", icon: BookOpen },
-          { label: "My Reports", href: "/student/results", icon: FileCheck2 },
-          { label: "Profile", href: "/student/profile", icon: Users },
+          { label: "Viva & Question Bank", href: "/student/materials", icon: FileQuestion },
+          { label: "Performance Analytics", href: "/student/performance", icon: TrendingUp },
+          { label: "My Scorecards", href: "/student/results", icon: FileCheck2 },
+          { label: "Profile & Settings", href: "/student/profile", icon: Users },
         ],
       },
     ],
@@ -185,8 +187,8 @@ export function AppShell({
 
   const roleLabels: Record<NormalizedRole, { title: string; color: string; bg: string; border: string }> = {
     admin: { title: "ADMIN CONSOLE", color: "#991B1B", bg: "#FEF2F2", border: "#FECACA" },
-    trainer: { title: "FACULTY / TRAINER", color: "#1E40AF", bg: "#EFF6FF", border: "#BFDBFE" },
-    student: { title: "STUDENT PORTAL", color: "#C2410C", bg: "#FFEDD5", border: "#FED7AA" },
+    trainer: { title: "EVALUATOR STUDIO", color: "#1E40AF", bg: "#EFF6FF", border: "#BFDBFE" },
+    student: { title: "CANDIDATE PORTAL", color: "#C2410C", bg: "#FFEDD5", border: "#FED7AA" },
   };
 
   return (
@@ -232,9 +234,9 @@ export function AppShell({
         {/* Center Session Notice */}
         <div className="hidden md:flex items-center gap-2 text-xs text-slate-400 font-medium">
           <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span>Academic Session 2026-27</span>
+          <span>AI Interview Simulation v2.6 · Online</span>
           <span className="text-slate-600">·</span>
-          <span>Timezone: Asia/Kolkata (IST)</span>
+          <span>Adaptive Voice & Text Rubric Evaluation</span>
         </div>
 
         {/* Right Role Badge & Authenticated Profile */}

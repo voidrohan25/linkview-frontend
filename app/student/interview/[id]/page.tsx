@@ -1,6 +1,6 @@
 "use client";
 
-import React, { use, useState, useEffect } from "react";
+import React, { use, useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
@@ -143,10 +143,12 @@ export default function StudentInterviewByIdPage({
         </AppShell>
       ) : (
         <AppShell role="student">
-          <VoiceInterviewRoom
-            initialSessionId={sessionId}
-            defaultTrack={interview?.technology || "Python"}
-          />
+          <Suspense fallback={<div className="p-12 text-center text-xs text-slate-400">Loading Interview Room...</div>}>
+            <VoiceInterviewRoom
+              initialSessionId={sessionId}
+              defaultTrack={interview?.technology || "Python"}
+            />
+          </Suspense>
         </AppShell>
       )}
     </ProtectedRoute>

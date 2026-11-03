@@ -111,13 +111,13 @@ export default function AdminDashboardPage() {
               <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-[#FEF2F2] text-[#991B1B] border border-[#FECACA] tracking-wide">
                 ADMIN CONSOLE
               </span>
-              <span className="text-xs text-[#64748B]">• Academic Session 2026-27</span>
+              <span className="text-xs text-[#64748B]">• Real-Time Platform Analytics</span>
             </div>
             <h1 className="text-2xl lg:text-3xl font-extrabold text-[#0F172A] tracking-tight">
               System Overview & Operations
             </h1>
             <p className="text-sm text-[#475569] mt-0.5">
-              High-level metrics for student cohorts, trainer allocations, AI mock interview schedules, and platform health.
+              High-level operations for candidate rosters, evaluator assignments, AI mock interview pipelines, and platform system health.
             </p>
           </div>
 

@@ -96,7 +96,7 @@ export default function StudentScorecardReportPage({
                   LinkTest AI Assessment Scorecard
                 </h1>
                 <p className="text-xs text-slate-500 m-0">
-                  IT Training Institute Placement Screening · Academic Session 2026-27
+                  AI Mock Interview Platform · Comprehensive Technical Diagnostic Report
                 </p>
               </div>
             </div>
