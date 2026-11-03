@@ -98,12 +98,12 @@ export default function RootHomePage() {
 
         {/* Right CTA */}
         <div className="flex items-center gap-3">
-          {status === "READY" && user ? (
+          {status === "READY" && user && (user.role !== "admin" || (typeof window !== "undefined" && sessionStorage.getItem("linktest_admin_token") === "linktest_admin_valid_token_2026")) ? (
             <Link
               href={user.role === "admin" ? "/admin/dashboard" : user.role === "trainer" ? "/trainer/dashboard" : "/student/dashboard"}
               className="btn btn-primary text-xs py-2 px-4 font-bold flex items-center gap-1.5 shadow-md"
             >
-              <span>Go to {user.role === "admin" ? "Admin" : user.role === "trainer" ? "Studio" : "Dashboard"}</span>
+              <span>Go to {user.role === "admin" ? "Admin Console" : user.role === "trainer" ? "Evaluator Studio" : "Candidate Dashboard"}</span>
               <ArrowRight size={13} />
             </Link>
           ) : (

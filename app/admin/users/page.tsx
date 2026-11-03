@@ -304,13 +304,13 @@ export default function AdminUsersPage() {
               <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200">
                 ADMIN CONSOLE
               </span>
-              <span className="text-xs text-slate-500">• User Governance & Role Authorization</span>
+              <span className="text-xs text-slate-500">• Candidate Governance & Role Authorization</span>
             </div>
             <h1 className="text-2xl font-extrabold text-[#0F172A] tracking-tight m-0">
-              User Management & Role Permissions
+              Candidate Directory & Access Control
             </h1>
             <p className="text-sm text-slate-600 mt-0.5">
-              Manage all registered Google and institute users. Assign student batches and promote students to Faculty Trainers.
+              Manage candidate profiles, interview access permissions, and track assignments. Authorize interviewer evaluator roles.
             </p>
           </div>
 
@@ -323,7 +323,7 @@ export default function AdminUsersPage() {
             <button
               onClick={() => loadUsers(false)}
               className="btn btn-outline text-xs py-2 px-3 font-bold flex items-center gap-1.5"
-              title="Refresh Roster"
+              title="Refresh Directory"
             >
               <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
               <span>Refresh</span>
@@ -334,7 +334,7 @@ export default function AdminUsersPage() {
               className="btn btn-primary text-xs py-2 px-4 font-bold flex items-center gap-1.5 shadow-sm bg-gradient-to-tr from-purple-700 to-indigo-700 text-white"
             >
               <Plus size={15} />
-              <span>Add Student</span>
+              <span>Add Candidate</span>
             </button>
           </div>
         </div>
@@ -369,12 +369,12 @@ export default function AdminUsersPage() {
               🛡️ Strict Role Boundary Enforced
             </span>
             <p className="text-slate-300 m-0 leading-relaxed">
-              Every person logging in via Google strictly joins as a <strong>Student</strong>. Only the Super Administrator has authorization to promote a student to <strong>Trainer</strong> or assign batches.
+              Every candidate registering or signing in via Google joins with <strong>Candidate</strong> access. Only the Super Administrator has authorization to elevate users to <strong>Evaluator/Trainer</strong> or assign cohorts.
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <span className="px-2.5 py-1 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 font-mono font-bold text-[11px]">
-              Default: Student
+              Default: Candidate
             </span>
             <span className="px-2.5 py-1 rounded-full bg-purple-950 text-purple-300 border border-purple-800 font-mono font-bold text-[11px]">
               Admin-Controlled

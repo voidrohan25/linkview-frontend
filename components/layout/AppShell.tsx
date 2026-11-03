@@ -116,23 +116,23 @@ export function AppShell({
         groupTitle: "CONSOLE & OVERVIEW",
         items: [
           { label: "Admin Console", href: "/admin/dashboard", icon: LayoutDashboard },
-          { label: "Student Roster", href: "/admin/users", icon: Users },
-          { label: "Faculty & Trainers", href: "/admin/trainers", icon: GraduationCap },
-          { label: "Batches & Cohorts", href: "/admin/batches", icon: BookOpen },
+          { label: "Candidate Directory", href: "/admin/users", icon: Users },
+          { label: "Evaluators & Panelists", href: "/admin/trainers", icon: GraduationCap },
+          { label: "Cohorts & Tracks", href: "/admin/batches", icon: BookOpen },
         ],
       },
       {
-        groupTitle: "INTERVIEWS & CURRICULUM",
+        groupTitle: "INTERVIEWS & QUESTION BANK",
         items: [
           { label: "Interview Programs", href: "/admin/interviews", icon: Sparkles, badge: "AI" },
           { label: "Question Bank", href: "/admin/question-bank", icon: FileQuestion },
-          { label: "Institutional Reports", href: "/admin/reports", icon: BarChart3 },
+          { label: "Performance Analytics", href: "/admin/reports", icon: BarChart3 },
         ],
       },
       {
         groupTitle: "SYSTEM SETTINGS",
         items: [
-          { label: "AI & System Settings", href: "/admin/settings", icon: Settings },
+          { label: "AI & Platform Settings", href: "/admin/settings", icon: Settings },
         ],
       },
     ],

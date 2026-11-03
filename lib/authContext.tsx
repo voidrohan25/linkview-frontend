@@ -72,10 +72,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const fetchAuthoritativeProfile = useCallback(
     async (email: string, initialName?: string, avatarUrl?: string): Promise<AuthUser | null> => {
       try {
+        const adminToken = typeof window !== "undefined" ? sessionStorage.getItem("linktest_admin_token") || "" : "";
         const res = await fetch("/api/auth/me", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, fullName: initialName, avatarUrl }),
+          headers: {
+            "Content-Type": "application/json",
+            "x-admin-token": adminToken,
+          },
+          body: JSON.stringify({ email, fullName: initialName, avatarUrl, adminToken }),
         });
 
         if (!res.ok) {
@@ -96,11 +100,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             avatarUrl: data.user.avatarUrl || avatarUrl,
           };
 
-          // Synchronize authoritative state to localStorage cache
+          // Synchronize authoritative state to localStorage cache (non-admin only)
           if (typeof window !== "undefined") {
             try {
-              localStorage.setItem("linktest_current_user", JSON.stringify(resolvedUser));
-              localStorage.setItem("linktest_current_role", resolvedRole);
+              if (resolvedRole !== "admin") {
+                localStorage.setItem("linktest_current_user", JSON.stringify(resolvedUser));
+                localStorage.setItem("linktest_current_role", resolvedRole);
+              }
             } catch {}
           }
 
@@ -127,6 +133,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       let discoveredEmail: string | null = null;
       let cachedUser: AuthUser | null = null;
 
+      const isAuthActive = typeof window !== "undefined" && sessionStorage.getItem("linktest_auth_active") === "true";
+      const adminToken = typeof window !== "undefined" ? sessionStorage.getItem("linktest_admin_token") : null;
+      const isAdminActive = adminToken === "linktest_admin_valid_token_2026";
+
       // 1. Check local client cache first
       if (typeof window !== "undefined") {
         try {
@@ -134,22 +144,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (raw) {
             const parsed = JSON.parse(raw);
             if (parsed && parsed.email) {
-              discoveredEmail = parsed.email;
-              cachedUser = {
-                id: parsed.id,
-                email: parsed.email,
-                fullName: parsed.fullName || parsed.email.split("@")[0],
-                role: normalizeRole(parsed.role),
-                batchCode: parsed.batchCode,
-                avatarUrl: parsed.avatarUrl,
-              };
+              const parsedRole = normalizeRole(parsed.role);
+
+              // CRITICAL SECURITY RULE: Admin accounts must strictly log in with fixed credentials in an active session
+              if (parsedRole === "admin") {
+                if (!isAdminActive) {
+                  // Purge stale or unauthorized admin cache
+                  localStorage.removeItem("linktest_current_user");
+                  localStorage.removeItem("linktest_current_role");
+                  localStorage.removeItem("linkview_admin_users_cache");
+                } else {
+                  discoveredEmail = parsed.email;
+                  cachedUser = {
+                    id: parsed.id,
+                    email: parsed.email,
+                    fullName: parsed.fullName || "Rahul Sir (Founder & Admin)",
+                    role: "admin",
+                    batchCode: parsed.batchCode,
+                    avatarUrl: parsed.avatarUrl,
+                  };
+                }
+              } else if (isAuthActive) {
+                discoveredEmail = parsed.email;
+                cachedUser = {
+                  id: parsed.id,
+                  email: parsed.email,
+                  fullName: parsed.fullName || parsed.email.split("@")[0],
+                  role: parsedRole,
+                  batchCode: parsed.batchCode,
+                  avatarUrl: parsed.avatarUrl,
+                };
+              }
             }
           }
         } catch {}
       }
 
       // 2. Check active Supabase OAuth session if configured
-      if (isSupabaseConfigured) {
+      if (isSupabaseConfigured && !discoveredEmail) {
         try {
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user?.email) {
@@ -158,21 +190,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch {}
       }
 
-      // 3. If an identity exists, verify authoritatively with backend database
-      if (discoveredEmail) {
+      // 3. If an active verified identity exists, load profile
+      if (discoveredEmail && (cachedUser?.role !== "admin" || isAdminActive)) {
         setStatus("LOADING_PROFILE");
         const freshUser = await fetchAuthoritativeProfile(discoveredEmail, cachedUser?.fullName);
         if (freshUser) {
           setStatus("READY");
-        } else if (cachedUser) {
-          // Graceful fallback to cached state if network temporarily failed
+        } else if (cachedUser && (cachedUser.role !== "admin" || isAdminActive)) {
           setUser(cachedUser);
           setRole(cachedUser.role);
           setStatus("READY");
         } else {
+          setUser(null);
+          setRole(null);
           setStatus("UNAUTHENTICATED");
         }
       } else {
+        setUser(null);
+        setRole(null);
         setStatus("UNAUTHENTICATED");
       }
     }
@@ -216,6 +251,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (typeof window !== "undefined") {
         try {
+          sessionStorage.setItem("linktest_auth_active", "true");
+          if (resolvedRole === "admin") {
+            sessionStorage.setItem("linktest_admin_active", "true");
+            sessionStorage.setItem("linktest_admin_token", data.token || "linktest_admin_valid_token_2026");
+          } else {
+            sessionStorage.removeItem("linktest_admin_active");
+            sessionStorage.removeItem("linktest_admin_token");
+          }
           localStorage.setItem("linktest_current_user", JSON.stringify(authUser));
           localStorage.setItem("linktest_current_role", resolvedRole);
         } catch {}
@@ -278,6 +321,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (typeof window !== "undefined") {
         try {
+          sessionStorage.setItem("linktest_auth_active", "true");
+          if (resolvedRole === "admin") {
+            sessionStorage.setItem("linktest_admin_active", "true");
+            sessionStorage.setItem("linktest_admin_token", data.token || "linktest_admin_valid_token_2026");
+          } else {
+            sessionStorage.removeItem("linktest_admin_active");
+            sessionStorage.removeItem("linktest_admin_token");
+          }
           localStorage.setItem("linktest_current_user", JSON.stringify(authUser));
           localStorage.setItem("linktest_current_role", resolvedRole);
         } catch {}
@@ -324,6 +375,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         localStorage.removeItem("linktest_current_user");
         localStorage.removeItem("linktest_current_role");
+        localStorage.removeItem("linkview_admin_users_cache");
         sessionStorage.clear();
       } catch {}
     }

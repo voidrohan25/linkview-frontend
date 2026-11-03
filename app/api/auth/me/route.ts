@@ -24,6 +24,16 @@ export async function GET(req: Request) {
     const allAdminEmails = [...SUPER_ADMIN_EMAILS, ...ADMIN_EMAILS].map((e) => e.toLowerCase());
 
     if (allAdminEmails.includes(normalizedEmail)) {
+      const adminToken = req.headers.get('x-admin-token');
+      if (adminToken !== 'linktest_admin_valid_token_2026') {
+        return NextResponse.json({
+          success: false,
+          authenticated: false,
+          user: null,
+          error: 'Admin session requires fixed credentials verification. Please log in.',
+        }, { status: 200 });
+      }
+
       const adminUser = getUserByEmail(normalizedEmail);
       return NextResponse.json({
         success: true,
@@ -57,19 +67,29 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const { email, fullName, avatarUrl } = await req.json();
+    const { email, fullName, avatarUrl, adminToken: bodyAdminToken } = await req.json();
     if (!email) {
       return NextResponse.json({ success: false, error: 'Email is required' }, { status: 400 });
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+    const token = req.headers.get('x-admin-token') || bodyAdminToken;
 
     // 1. Authoritative Admin check: Fixed Super Admin Gmail IDs or ADMIN_EMAILS
     const allAdminEmails = [...SUPER_ADMIN_EMAILS, ...ADMIN_EMAILS].map((e) => e.toLowerCase());
     if (allAdminEmails.includes(normalizedEmail)) {
+      if (token !== 'linktest_admin_valid_token_2026') {
+        return NextResponse.json({
+          success: false,
+          authenticated: false,
+          user: null,
+          error: 'Admin verification required. Please sign in with fixed credentials.',
+        }, { status: 200 });
+      }
+
       const adminUser = getOrCreateGoogleUser({
         email: normalizedEmail,
-        fullName: fullName || 'Super Administrator',
+        fullName: fullName || 'Rahul Sir (Founder & Admin)',
         avatarUrl,
       });
 

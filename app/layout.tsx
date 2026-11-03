@@ -3,8 +3,8 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/authContext";
 
 export const metadata: Metadata = {
-  title: "LinkTest AI Interview · Institute Mock Interview Platform",
-  description: "AI-Powered Technical & HR Mock Interview Management Platform for IT Institutes",
+  title: "LinkTest AI · Dedicated AI Mock Interview Platform",
+  description: "AI-Powered Technical, Behavioral STAR & HR Mock Interview Simulation and Diagnostic Evaluation Platform",
 };
 
 export default function RootLayout({
