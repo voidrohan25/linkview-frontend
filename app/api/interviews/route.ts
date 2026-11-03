@@ -285,3 +285,28 @@ export async function PUT(req: Request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+// DELETE: Delete an interview session (Admin, Trainer, or Student cleanup)
+export async function DELETE(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Interview ID is required' }, { status: 400 });
+    }
+
+    const success = interviewStore.deleteInterview(id);
+    if (!success) {
+      return NextResponse.json({ success: false, error: 'Interview session not found or already deleted' }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Interview ${id} deleted successfully`,
+    });
+  } catch (err: unknown) {
+    const error = err as Error;
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}

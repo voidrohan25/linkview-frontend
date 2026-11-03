@@ -18,6 +18,7 @@ import {
   BookOpen,
   Award,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 
 interface PlatformUser {
@@ -141,6 +142,26 @@ export default function AdminUsersPage() {
       }
     } catch {
       setStatusMsg({ type: "error", text: "Network error occurred." });
+    }
+  };
+
+  // Delete User
+  const handleDeleteUser = async (user: PlatformUser) => {
+    if (!confirm(`Are you sure you want to permanently delete user "${user.fullName}" (${user.email})?`)) return;
+
+    try {
+      const res = await fetch(`/api/admin/users?id=${encodeURIComponent(user.id)}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (json.success) {
+        setStatusMsg({ type: "success", text: `Deleted user ${user.fullName} successfully.` });
+        loadUsers(false);
+      } else {
+        setStatusMsg({ type: "error", text: json.error || "Failed to delete user" });
+      }
+    } catch {
+      setStatusMsg({ type: "error", text: "Failed to delete user." });
     }
   };
 
@@ -420,26 +441,39 @@ export default function AdminUsersPage() {
                         <td className="py-3.5 px-4 text-right whitespace-nowrap">
                           {isAdmin ? (
                             <span className="text-slate-400 text-[11px] font-medium">Protected Admin</span>
-                          ) : isStudent ? (
-                            <button
-                              type="button"
-                              onClick={() => handlePromoteToTrainer(user)}
-                              className="btn btn-primary text-[11px] py-1 px-3 font-bold flex items-center gap-1.5 ml-auto bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
-                              title="Promote Student to Faculty Trainer"
-                            >
-                              <GraduationCap size={13} />
-                              <span>Promote to Trainer</span>
-                            </button>
                           ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleDemoteToStudent(user)}
-                              className="btn btn-outline text-[11px] py-1 px-3 font-bold flex items-center gap-1.5 ml-auto text-amber-700 hover:bg-amber-50 border-amber-300"
-                              title="Demote Trainer back to Student"
-                            >
-                              <UserCheck size={13} />
-                              <span>Demote to Student</span>
-                            </button>
+                            <div className="flex items-center justify-end gap-2">
+                              {isStudent ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handlePromoteToTrainer(user)}
+                                  className="btn btn-primary text-[11px] py-1 px-3 font-bold flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                                  title="Promote Student to Faculty Trainer"
+                                >
+                                  <GraduationCap size={13} />
+                                  <span>Promote to Trainer</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDemoteToStudent(user)}
+                                  className="btn btn-outline text-[11px] py-1 px-3 font-bold flex items-center gap-1.5 text-amber-700 hover:bg-amber-50 border-amber-300"
+                                  title="Demote Trainer back to Student"
+                                >
+                                  <UserCheck size={13} />
+                                  <span>Demote to Student</span>
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteUser(user)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                title="Delete user account"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
                           )}
                         </td>
                       </tr>

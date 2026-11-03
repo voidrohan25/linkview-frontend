@@ -1,7 +1,13 @@
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+
 /**
  * LinkTest AI Mock Interview Platform - Master Central Store
- * Authoritative store for institute batches, trainers, students, questions, scheduled interviews, and scorecards.
+ * Authoritative persistent store for institute batches, trainers, students, questions, scheduled interviews, and scorecards.
  */
+
+const INTERVIEW_CACHE_PATH = path.join(os.tmpdir(), 'linkview_interviews_persistent_cache.json');
 
 export interface StudentProfile {
   id: string;
@@ -37,6 +43,7 @@ export interface BatchCohort {
   trainerId: string;
   trainerName: string;
   studentCount: number;
+  students?: string[];
   startDate: string;
   status: 'ongoing' | 'upcoming' | 'completed';
 }
@@ -254,7 +261,7 @@ const defaultQuestionBank: QuestionBankItem[] = [
 // Clean initial state: Zero pre-existing mock interviews (Scheduled on-demand by Trainer)
 const defaultInterviews: InterviewSessionRecord[] = [];
 
-// Persistent state class in memory
+// Persistent state class with disk caching to survive serverless restarts
 class InterviewStore {
   private students: StudentProfile[] = [...defaultStudents];
   private trainers: TrainerProfile[] = [...defaultTrainers];
@@ -262,12 +269,58 @@ class InterviewStore {
   private questionBank: QuestionBankItem[] = [...defaultQuestionBank];
   private interviews: InterviewSessionRecord[] = [...defaultInterviews];
 
+  constructor() {
+    this.loadFromDisk();
+  }
+
+  private loadFromDisk() {
+    try {
+      if (fs.existsSync(INTERVIEW_CACHE_PATH)) {
+        const raw = fs.readFileSync(INTERVIEW_CACHE_PATH, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.interviews)) this.interviews = parsed.interviews;
+        if (Array.isArray(parsed.batches) && parsed.batches.length > 0) this.batches = parsed.batches;
+        if (Array.isArray(parsed.students)) this.students = parsed.students;
+        if (Array.isArray(parsed.trainers)) this.trainers = parsed.trainers;
+        if (Array.isArray(parsed.questionBank) && parsed.questionBank.length > 0) {
+          this.questionBank = parsed.questionBank;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not read persistent interviews cache:', e);
+    }
+  }
+
+  saveToDisk() {
+    try {
+      fs.writeFileSync(
+        INTERVIEW_CACHE_PATH,
+        JSON.stringify(
+          {
+            interviews: this.interviews,
+            batches: this.batches,
+            students: this.students,
+            trainers: this.trainers,
+            questionBank: this.questionBank,
+          },
+          null,
+          2
+        ),
+        'utf-8'
+      );
+    } catch (e) {
+      console.warn('Could not write persistent interviews cache:', e);
+    }
+  }
+
   // Request & Approval Lifecycle for Protected Mock Interviews
   requestInterviewApproval(interviewId: string): InterviewSessionRecord | null {
     const interview = this.interviews.find((i) => i.id === interviewId);
     if (!interview) return null;
     interview.approvalStatus = 'pending';
     interview.approvalRequestedAt = new Date().toISOString();
+    this.saveToDisk();
+    this.saveToDisk();
     return interview;
   }
 
@@ -277,6 +330,8 @@ class InterviewStore {
     interview.approvalStatus = 'approved';
     interview.approvalDecisionAt = new Date().toISOString();
     interview.approvedByTrainer = trainerName;
+    this.saveToDisk();
+    this.saveToDisk();
     return interview;
   }
 
@@ -287,7 +342,54 @@ class InterviewStore {
     interview.approvalDecisionAt = new Date().toISOString();
     interview.approvedByTrainer = trainerName;
     interview.rejectionReason = reason || 'Trainer declined candidate mock start request';
+    this.saveToDisk();
+    this.saveToDisk();
     return interview;
+  }
+
+  deleteInterview(interviewId: string): boolean {
+    const idx = this.interviews.findIndex((i) => i.id === interviewId);
+    if (idx !== -1) {
+      this.interviews.splice(idx, 1);
+      this.saveToDisk();
+      return true;
+    }
+    return false;
+  }
+
+  // Batches management with persistence
+  addBatch(batch: {
+    name: string;
+    code: string;
+    technology: string;
+    trainerName?: string;
+    students?: string[];
+  }): BatchCohort {
+    const newBatch: BatchCohort = {
+      id: `batch-${Date.now().toString().slice(-4)}`,
+      name: batch.name,
+      code: batch.code.toUpperCase(),
+      technology: batch.technology,
+      trainerId: 'tr-lead',
+      trainerName: batch.trainerName || 'Rahul Sir (Lead Faculty)',
+      studentCount: batch.students ? batch.students.length : 0,
+      students: batch.students || [],
+      startDate: new Date().toISOString().split('T')[0],
+      status: 'ongoing',
+    };
+    this.batches.unshift(newBatch);
+    this.saveToDisk();
+    return newBatch;
+  }
+
+  deleteBatch(batchId: string): boolean {
+    const idx = this.batches.findIndex((b) => b.id === batchId || b.code === batchId);
+    if (idx !== -1) {
+      this.batches.splice(idx, 1);
+      this.saveToDisk();
+      return true;
+    }
+    return false;
   }
 
   getPendingApprovals(): InterviewSessionRecord[] {
@@ -438,11 +540,13 @@ class InterviewStore {
       tags: item.tags || [item.technology, 'CustomImport'],
     };
     this.questionBank.unshift(newItem);
+    this.saveToDisk();
     return newItem;
   }
 
   addBulkQuestions(items: Array<Omit<QuestionBankItem, 'id'> & { id?: string }>): QuestionBankItem[] {
     const added = items.map((item) => this.addQuestion(item));
+    this.saveToDisk();
     return added;
   }
 
@@ -450,6 +554,7 @@ class InterviewStore {
     const index = this.questionBank.findIndex((q) => q.id === id);
     if (index !== -1) {
       this.questionBank.splice(index, 1);
+      this.saveToDisk();
       return true;
     }
     return false;
@@ -503,6 +608,7 @@ class InterviewStore {
     };
 
     this.interviews.unshift(newRecord);
+    this.saveToDisk();
     return newRecord;
   }
 
@@ -548,6 +654,7 @@ class InterviewStore {
       };
     }
 
+    this.saveToDisk();
     return interview;
   }
 
@@ -575,6 +682,7 @@ class InterviewStore {
     if (approved) {
       interview.status = 'completed';
     }
+    this.saveToDisk();
     return interview;
   }
 

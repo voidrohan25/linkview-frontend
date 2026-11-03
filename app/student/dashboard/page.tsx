@@ -20,6 +20,7 @@ import {
   Play,
   RotateCcw,
   BookOpen,
+  Trash2,
 } from "lucide-react";
 
 interface ScheduledInterview {
@@ -183,6 +184,20 @@ export default function StudentDashboardPage() {
     }
   };
 
+  const handleDeleteInterview = async (interviewId: string) => {
+    if (!confirm("Are you sure you want to dismiss this interview from your dashboard?")) return;
+    try {
+      const res = await fetch(`/api/interviews?id=${interviewId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        loadDashboard(student.email, false);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const currentDateFormatted = new Date().toLocaleDateString("en-US", {
     weekday: "long",
     month: "short",
@@ -338,6 +353,14 @@ export default function StudentDashboardPage() {
                       <span>{requestingApproval ? "Submitting Request..." : "Start Mock Interview"}</span>
                     </button>
                   )}
+
+                  <button
+                    onClick={() => handleDeleteInterview(nextInterview.id)}
+                    title="Dismiss or Delete Interview"
+                    className="p-2.5 rounded-xl bg-white/10 hover:bg-red-500/20 text-slate-300 hover:text-red-400 border border-white/10 transition-colors"
+                  >
+                    <Trash2 size={16} />
+                  </button>
                 </div>
               </div>
             </div>
@@ -421,29 +444,97 @@ export default function StudentDashboardPage() {
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
                       {item.approvalStatus === "approved" ? "✓ Approved" : "Approval Needed"}
                     </span>
-                    {item.approvalStatus === "approved" ? (
-                      <Link
-                        href={`/student/interview/${item.id}`}
-                        className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-0.5"
-                      >
-                        <span>Enter Room</span>
-                        <ArrowRight size={13} />
-                      </Link>
-                    ) : (
+                    <div className="flex items-center gap-2">
+                      {item.approvalStatus === "approved" ? (
+                        <Link
+                          href={`/student/interview/${item.id}`}
+                          className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-0.5"
+                        >
+                          <span>Enter Room</span>
+                          <ArrowRight size={13} />
+                        </Link>
+                      ) : (
+                        <button
+                          onClick={() => handleRequestStartInterview(item.id)}
+                          className="text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-0.5"
+                        >
+                          <span>Start Mock</span>
+                          <ArrowRight size={13} />
+                        </button>
+                      )}
                       <button
-                        onClick={() => handleRequestStartInterview(item.id)}
-                        className="text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-0.5"
+                        onClick={() => handleDeleteInterview(item.id)}
+                        title="Delete or dismiss interview"
+                        className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                       >
-                        <span>Start Mock</span>
-                        <ArrowRight size={13} />
+                        <Trash2 size={14} />
                       </button>
-                    )}
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
           )}
         </div>
+
+        {/* D. COMPLETED SESSIONS / HISTORY */}
+        {completedInterviews.length > 0 && (
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 size={16} className="text-emerald-600" />
+                <h3 className="text-base font-extrabold text-[#0F172A] m-0">
+                  Completed Assessment History
+                </h3>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {completedInterviews.map((item) => (
+                <div
+                  key={item.id}
+                  className="card p-4.5 bg-white border border-[#E2E8F0] hover:border-slate-300 transition-all rounded-2xl flex flex-col justify-between space-y-3"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        Completed
+                      </span>
+                      {item.scorecard?.overallScore !== undefined && (
+                        <span className="text-xs font-extrabold text-emerald-600">
+                          {item.scorecard.overallScore}/100
+                        </span>
+                      )}
+                    </div>
+                    <h4 className="text-sm font-bold text-[#0F172A] leading-snug m-0">
+                      {item.technology} Technical Mock
+                    </h4>
+                    <p className="text-xs text-slate-400 m-0">
+                      Evaluated on {new Date(item.scheduledAt).toLocaleDateString()}
+                    </p>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                    <Link
+                      href={`/student/interview/${item.id}/report`}
+                      className="text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-0.5"
+                    >
+                      <span>View Performance Report</span>
+                      <ArrowRight size={13} />
+                    </Link>
+                    <button
+                      onClick={() => handleDeleteInterview(item.id)}
+                      title="Delete completed interview record"
+                      className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </AppShell>
   );

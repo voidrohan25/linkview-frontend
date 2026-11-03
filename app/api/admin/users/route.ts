@@ -7,6 +7,7 @@ import {
   promoteStudentToTrainer,
   demoteTrainerToStudent,
   updateUserBatch,
+  deleteUser,
   PlatformUser,
 } from '@/lib/usersStore';
 
@@ -141,6 +142,31 @@ export async function PATCH(req: Request) {
     }
 
     return NextResponse.json({ success: false, error: 'Invalid action or parameters' }, { status: 400 });
+  } catch (err: unknown) {
+    const error = err as Error;
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+// DELETE: Delete a student or trainer from the institution roster
+export async function DELETE(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const userId = searchParams.get('id');
+
+    if (!userId) {
+      return NextResponse.json({ success: false, error: 'User ID is required' }, { status: 400 });
+    }
+
+    const success = deleteUser(userId);
+    if (!success) {
+      return NextResponse.json({
+        success: false,
+        error: 'User not found or cannot be deleted (e.g. protected Super Admin account)',
+      }, { status: 400 });
+    }
+
+    return NextResponse.json({ success: true, message: `User ${userId} deleted successfully` });
   } catch (err: unknown) {
     const error = err as Error;
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

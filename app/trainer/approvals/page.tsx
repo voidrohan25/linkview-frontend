@@ -16,6 +16,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Zap,
+  Trash2,
 } from "lucide-react";
 
 interface PendingInterviewRequest {
@@ -105,6 +106,22 @@ export default function TrainerApprovalsPage() {
       console.error("Decision error:", e);
     } finally {
       setProcessingId(null);
+    }
+  };
+
+  const handleDeleteInterview = async (interviewId: string) => {
+    if (!confirm("Are you sure you want to delete this interview record? This will permanently remove it.")) return;
+    try {
+      const res = await fetch(`/api/interviews?id=${interviewId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setToastMsg("Interview record deleted successfully.");
+        setTimeout(() => setToastMsg(""), 3500);
+        await fetchApprovals(true);
+      }
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -313,14 +330,23 @@ export default function TrainerApprovalsPage() {
                         )}
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        {intv.approvalStatus !== "approved" && (
+                        <div className="flex items-center justify-end gap-1.5">
+                          {intv.approvalStatus !== "approved" && (
+                            <button
+                              onClick={() => handleDecision(intv.id, "approve_start", intv.studentName)}
+                              className="btn btn-outline btn-sm text-xs py-1 px-3 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                            >
+                              Pre-Approve
+                            </button>
+                          )}
                           <button
-                            onClick={() => handleDecision(intv.id, "approve_start", intv.studentName)}
-                            className="btn btn-outline btn-sm text-xs py-1 px-3 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                            onClick={() => handleDeleteInterview(intv.id)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                            title="Delete Interview Record"
                           >
-                            Pre-Approve
+                            <Trash2 size={14} />
                           </button>
-                        )}
+                        </div>
                       </td>
                     </tr>
                   ))

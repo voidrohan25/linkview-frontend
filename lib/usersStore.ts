@@ -7,6 +7,10 @@
  * - Clean initial state (no dummy/fake records)
  */
 
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+
 export interface PlatformUser {
   id: string;
   fullName: string;
@@ -38,6 +42,31 @@ declare global {
   var __linkTestUsersState: GlobalUsersState | undefined;
 }
 
+const USERS_CACHE_PATH = path.join(os.tmpdir(), 'linkview_users_persistent_cache.json');
+
+function loadPersistedUsers(): GlobalUsersState | null {
+  try {
+    if (fs.existsSync(USERS_CACHE_PATH)) {
+      const raw = fs.readFileSync(USERS_CACHE_PATH, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.users) && parsed.users.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn('Could not read users cache:', e);
+  }
+  return null;
+}
+
+export function savePersistedUsers(st: GlobalUsersState) {
+  try {
+    fs.writeFileSync(USERS_CACHE_PATH, JSON.stringify(st, null, 2), 'utf-8');
+  } catch (e) {
+    console.warn('Could not write users cache:', e);
+  }
+}
+
 // Configured Admin email addresses from environment
 export const ADMIN_EMAILS: string[] = [
   (process.env.ADMIN_EMAIL || 'rahul.sir@linktest.io').trim().toLowerCase(),
@@ -48,6 +77,24 @@ export const ADMIN_EMAILS: string[] = [
 export const ADMIN_DEFAULT_PASSWORD = process.env.ADMIN_PASSWORD || 'RahulSir@2026';
 
 function initUsersState(): GlobalUsersState {
+  const fromDisk = loadPersistedUsers();
+  if (fromDisk) {
+    // Ensure primary admin always exists in list
+    const hasAdmin = fromDisk.users.some(u => ADMIN_EMAILS.includes(u.email.toLowerCase()));
+    if (!hasAdmin) {
+      fromDisk.users.unshift({
+        id: 'admin-lead',
+        fullName: 'Rahul Sir (Founder & Admin)',
+        email: ADMIN_EMAILS[0],
+        role: 'super_admin',
+        status: 'active',
+        batchCode: 'GLOBAL',
+        joinedAt: new Date().toISOString(),
+      });
+    }
+    return fromDisk;
+  }
+
   // Clean initialization: ONLY configured admin accounts, NO fake examinees
   const initialUsers: PlatformUser[] = [
     {
@@ -61,10 +108,12 @@ function initUsersState(): GlobalUsersState {
     },
   ];
 
-  return {
+  const st = {
     users: initialUsers,
     trainers: [],
   };
+  savePersistedUsers(st);
+  return st;
 }
 
 if (!globalThis.__linkTestUsersState) {
@@ -135,7 +184,31 @@ export function getOrCreateGoogleUser(params: {
   };
 
   state.users.push(newUser);
+  savePersistedUsers(state);
   return newUser;
+}
+
+/**
+ * Admin action: Delete a user by ID or email
+ */
+export function deleteUser(userId: string): boolean {
+  const norm = userId.trim().toLowerCase();
+  const idx = state.users.findIndex((u) => u.id.toLowerCase() === norm || u.email.toLowerCase() === norm);
+  if (idx === -1) return false;
+
+  // Protect authoritative configured admin accounts
+  if (state.users[idx].role === 'super_admin' && ADMIN_EMAILS.includes(state.users[idx].email.toLowerCase())) {
+    return false;
+  }
+
+  const removed = state.users.splice(idx, 1)[0];
+  const trainerIdx = state.trainers.findIndex((t) => t.email.toLowerCase() === removed.email.toLowerCase());
+  if (trainerIdx !== -1) {
+    state.trainers.splice(trainerIdx, 1);
+  }
+
+  savePersistedUsers(state);
+  return true;
 }
 
 /**
@@ -164,6 +237,7 @@ export function promoteStudentToTrainer(userId: string, batchCodes: string[] = [
     });
   }
 
+  savePersistedUsers(state);
   return true;
 }
 
@@ -180,6 +254,7 @@ export function demoteTrainerToStudent(userId: string): boolean {
     state.trainers.splice(trainerIdx, 1);
   }
 
+  savePersistedUsers(state);
   return true;
 }
 
@@ -191,6 +266,7 @@ export function updateUserBatch(userId: string, batchCode: string): PlatformUser
   if (!user) return undefined;
 
   user.batchCode = batchCode;
+  savePersistedUsers(state);
   return user;
 }
 
