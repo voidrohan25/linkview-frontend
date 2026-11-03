@@ -38,14 +38,25 @@ export default function TrainerSchedulePage() {
   const [questionSource, setQuestionSource] = useState<"auto" | "custom">("auto");
   const [availableBankQuestions, setAvailableBankQuestions] = useState<QuestionBankItem[]>([]);
   const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
+  const [studentsList, setStudentsList] = useState<any[]>([]);
 
-  // Load question bank
+  // Load question bank and registered students
   useEffect(() => {
     fetch("/api/trainer/questions")
       .then((res) => res.json())
       .then((json) => {
         if (json.success) {
           setAvailableBankQuestions(json.data || []);
+        }
+      })
+      .catch(() => {});
+
+    fetch("/api/admin/users?role=student")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setStudentsList(json.data);
+          setSelectedStudent(json.data[0].id);
         }
       })
       .catch(() => {});
@@ -197,11 +208,18 @@ export default function TrainerSchedulePage() {
                   onChange={(e) => setSelectedStudent(e.target.value)}
                   className="form-select text-xs"
                 >
-                  <option value="std-101">Aarav Sharma (Python Full Stack 2026-A)</option>
-                  <option value="std-102">Pooja Iyer (Java Enterprise Systems 2026-B)</option>
-                  <option value="std-103">Rohan Verma (DSA Placement Track)</option>
-                  <option value="std-104">Ananya Deshmukh (Python Full Stack 2026-A)</option>
-                  <option value="std-105">Vikram Malhotra (Java Enterprise Systems 2026-B)</option>
+                  {studentsList.length > 0 ? (
+                    studentsList.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.fullName} ({s.email}) {s.batchCode ? `• ${s.batchCode}` : ""}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="std-101">Aarav Sharma (Python Full Stack 2026-A)</option>
+                      <option value="std-102">Pooja Iyer (Java Enterprise Systems 2026-B)</option>
+                    </>
+                  )}
                 </select>
               </div>
             ) : (
