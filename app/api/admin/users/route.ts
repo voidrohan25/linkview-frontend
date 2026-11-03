@@ -123,7 +123,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ success: true, message: 'User successfully promoted to Trainer' });
     }
 
-    if (action === 'demote_to_student') {
+    if (action === 'demote_to_student' || action === 'demote') {
       const success = demoteTrainerToStudent(userId);
       if (!success) {
         return NextResponse.json({ success: false, error: 'User not found or cannot be demoted' }, { status: 400 });

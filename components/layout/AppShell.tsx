@@ -237,12 +237,6 @@ export function AppShell({
     student: { title: "STUDENT PORTAL", color: "#C2410C", bg: "#FFEDD5", border: "#FED7AA" },
   };
 
-  const handleRoleSwitch = (targetRole: Role) => {
-    if (targetRole === "admin") router.push("/admin/dashboard");
-    else if (targetRole === "trainer") router.push("/trainer/dashboard");
-    else router.push("/student/dashboard");
-  };
-
   return (
     <div className="flex flex-col min-h-screen bg-[#F8FAFC]">
       {/* LinkTest Top Bar (64px) */}

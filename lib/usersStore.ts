@@ -528,6 +528,8 @@ export function createTrainerInvitation(params: {
     state.trainers.push(trainer);
   }
 
+  savePersistedUsers(state);
+
   return {
     user,
     trainer,
@@ -541,6 +543,7 @@ export function acceptTrainerInvitation(params: { email: string }): boolean {
   const tr = state.trainers.find((t) => t.email.toLowerCase() === norm);
   if (tr) {
     tr.status = 'active';
+    savePersistedUsers(state);
     return true;
   }
   return false;

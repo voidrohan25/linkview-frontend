@@ -7,25 +7,27 @@ import { User, Mail, Phone, BookOpen, GraduationCap, ShieldCheck, CheckCircle2, 
 
 export default function StudentProfilePage() {
   const [student, setStudent] = useState({
-    fullName: "Student",
-    email: "student@linktest.io",
-    phone: "+91 98765 43210",
-    batchName: "Python Full Stack Placement Cohort 2026-A",
-    batchCode: "PY-2026-A",
-    technology: "Python & Distributed Systems",
+    fullName: "Candidate",
+    email: "",
+    phone: "Not provided",
+    batchName: "UNASSIGNED",
+    batchCode: "UNASSIGNED",
+    technology: "General Technical",
     status: "active",
-    interviewsCompleted: 1,
-    averageScore: 86,
-    joinedDate: "January 15, 2026",
-    assignedTrainer: "Rahul Sir (Lead Faculty)",
+    interviewsCompleted: 0,
+    averageScore: 0,
+    joinedDate: "Academic Session 2026-27",
+    assignedTrainer: "Unassigned Faculty",
   });
 
   useEffect(() => {
+    let resolvedEmail = "";
     try {
       const saved = localStorage.getItem("linktest_current_user");
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed.email) {
+          resolvedEmail = parsed.email;
           setStudent((prev) => ({
             ...prev,
             fullName: parsed.fullName || parsed.email.split("@")[0],
@@ -37,6 +39,7 @@ export default function StudentProfilePage() {
 
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user?.email) {
+        resolvedEmail = user.email;
         const name =
           user.user_metadata?.full_name ||
           user.user_metadata?.name ||
@@ -47,16 +50,61 @@ export default function StudentProfilePage() {
           email: user.email!,
         }));
       }
+
+      if (resolvedEmail) {
+        fetch(`/api/interviews?role=student&email=${encodeURIComponent(resolvedEmail)}`)
+          .then((res) => res.json())
+          .then((json) => {
+            if (json.success && json.data) {
+              const std = json.data.student;
+              const completed = json.data.completedInterviews || [];
+              const avg =
+                completed.length > 0
+                  ? Math.round(
+                      completed.reduce(
+                        (acc: number, item: any) =>
+                          acc + (item.scorecard?.overallScore || 0),
+                        0
+                      ) / completed.length
+                    )
+                  : 0;
+
+              if (std) {
+                setStudent((prev) => ({
+                  ...prev,
+                  fullName: std.fullName || prev.fullName,
+                  email: std.email || prev.email,
+                  batchName: std.batchName || "UNASSIGNED",
+                  batchCode: std.batchName || "UNASSIGNED",
+                  technology: std.technology || "General Technical",
+                  interviewsCompleted: completed.length,
+                  averageScore: avg,
+                  joinedDate: std.joinedDate || prev.joinedDate,
+                }));
+              }
+            }
+          })
+          .catch(() => {});
+      }
     }).catch(() => {});
   }, []);
+
+  const initials = student.fullName
+    ? student.fullName
+        .split(" ")
+        .map((p) => p[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase()
+    : "ST";
 
   return (
     <AppShell role="student" userName={student.fullName} userEmail={student.email}>
       <div className="max-w-[960px] mx-auto space-y-6">
         <div className="p-6 rounded-2xl bg-white border border-[#E2E8F0] shadow-sm flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-orange-600 text-white font-extrabold text-2xl flex items-center justify-center shadow-md">
-              AS
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-orange-600 to-amber-600 text-white font-extrabold text-2xl flex items-center justify-center shadow-md">
+              {initials}
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -65,7 +113,9 @@ export default function StudentProfilePage() {
                   Active Student
                 </span>
               </div>
-              <p className="text-xs text-slate-500 m-0">{student.email} • {student.batchCode}</p>
+              <p className="text-xs text-slate-500 m-0">
+                {student.email} • {student.batchCode === "UNASSIGNED" ? "Unassigned" : student.batchCode}
+              </p>
             </div>
           </div>
 

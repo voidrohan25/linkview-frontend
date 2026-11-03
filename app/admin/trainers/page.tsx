@@ -116,10 +116,10 @@ export default function AdminTrainersPage() {
     if (!confirm(`Demote ${user.fullName} back to Student?`)) return;
     try {
       const res = await fetch("/api/admin/users", {
-        method: "POST",
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "demote",
+          action: "demote_to_student",
           userId: user.id,
         }),
       });
