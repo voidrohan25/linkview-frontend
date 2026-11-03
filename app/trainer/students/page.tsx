@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { useAuth } from "@/lib/authContext";
 import {
   UserCheck,
   Search,
@@ -39,12 +41,22 @@ export default function TrainerStudentsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [students, setStudents] = useState<StudentRecord[]>([]);
   const [batches, setBatches] = useState<BatchItem[]>([]);
+  const { user: authUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [batchNotice, setBatchNotice] = useState<string | null>(null);
   const [trainerUser, setTrainerUser] = useState({
-    name: "Faculty Trainer",
-    email: "",
+    name: authUser?.fullName || "Faculty Trainer",
+    email: authUser?.email || "",
   });
+
+  useEffect(() => {
+    if (authUser?.email) {
+      setTrainerUser({
+        name: authUser.fullName || authUser.email.split("@")[0],
+        email: authUser.email,
+      });
+    }
+  }, [authUser]);
 
   const fetchBatches = async () => {
     try {
@@ -58,8 +70,8 @@ export default function TrainerStudentsPage() {
     } catch {}
   };
 
-  const fetchStudents = async () => {
-    setLoading(true);
+  const fetchStudents = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await fetch("/api/admin/users?role=student");
       if (res.ok) {
@@ -79,39 +91,26 @@ export default function TrainerStudentsPage() {
             readiness: u.batchCode && u.batchCode !== "UNASSIGNED" ? "Cohort Enrolled" : "Pending Assignment",
           }));
           setStudents(mapped);
-          setLoading(false);
           return;
         }
       }
     } catch (e) {
       console.warn("Could not fetch students from API:", e);
+    } finally {
+      if (!silent) setLoading(false);
     }
 
     setStudents([]);
-    setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("linktest_current_user");
-      if (saved) {
-        const u = JSON.parse(saved);
-        if (u.fullName || u.email) {
-          setTrainerUser({
-            name: u.fullName || u.email.split("@")[0],
-            email: u.email,
-          });
-        }
-      }
-    } catch {}
-
     fetchBatches();
-    fetchStudents();
+    fetchStudents(false);
     const pollTimer = setInterval(() => {
-      fetchStudents();
-    }, 3000);
+      fetchStudents(true);
+    }, 15000);
     return () => clearInterval(pollTimer);
-  }, []);
+  }, [fetchStudents]);
 
   const handleAssignBatch = async (studentId: string, studentName: string, studentEmail: string, newBatch: string) => {
     try {
@@ -156,7 +155,8 @@ export default function TrainerStudentsPage() {
   );
 
   return (
-    <AppShell role="trainer" userName={trainerUser.name} userEmail={trainerUser.email}>
+    <ProtectedRoute allowedRoles={["trainer"]}>
+      <AppShell role="trainer" userName={trainerUser.name} userEmail={trainerUser.email}>
       <div className="max-w-[1400px] mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-[#E2E8F0] gap-4">
@@ -177,7 +177,7 @@ export default function TrainerStudentsPage() {
 
           <div className="flex items-center gap-2.5">
             <button
-              onClick={fetchStudents}
+              onClick={() => fetchStudents()}
               className="btn btn-outline text-xs py-2 px-3 flex items-center gap-1.5"
               title="Refresh Roster"
             >
@@ -303,5 +303,6 @@ export default function TrainerStudentsPage() {
         </div>
       </div>
     </AppShell>
-  );
+  </ProtectedRoute>
+);
 }

@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { useAuth } from "@/lib/authContext";
 import {
   Sparkles,
   Mic,
@@ -39,56 +41,58 @@ export default function StudentInterviewsListPage() {
   const [loading, setLoading] = useState(true);
   const [requestingId, setRequestingId] = useState<string | null>(null);
 
+  const { user: authUser } = useAuth();
   const [studentUser, setStudentUser] = useState({
-    name: "Candidate",
-    email: "",
+    name: authUser?.fullName || "Candidate",
+    email: authUser?.email || "",
   });
+  const emailRef = useRef(authUser?.email || "");
 
-  const loadInterviews = (userEmail?: string) => {
-    const emailToUse = userEmail || studentUser.email;
+  useEffect(() => {
+    if (authUser?.email) {
+      emailRef.current = authUser.email;
+      setStudentUser({
+        name: authUser.fullName || authUser.email.split("@")[0],
+        email: authUser.email,
+      });
+    }
+  }, [authUser]);
+
+  const loadInterviews = useCallback(async (userEmail?: string, silent = false) => {
+    if (!silent) setLoading(true);
+    const emailToUse = userEmail || emailRef.current;
     const url = emailToUse
       ? `/api/interviews?role=student&email=${encodeURIComponent(emailToUse)}`
       : `/api/interviews?role=student`;
 
-    fetch(url)
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.success && json.data) {
-          const all = [
-            ...(json.data.upcomingInterviews || []),
-            ...(json.data.completedInterviews || []),
-          ];
-          if (json.data.nextScheduledInterview) {
-            const exists = all.some((i) => i.id === json.data.nextScheduledInterview.id);
-            if (!exists) all.unshift(json.data.nextScheduledInterview);
-          }
-          setInterviews(all);
+    try {
+      const res = await fetch(url);
+      const json = await res.json();
+      if (json.success && json.data) {
+        const all = [
+          ...(json.data.upcomingInterviews || []),
+          ...(json.data.completedInterviews || []),
+        ];
+        if (json.data.nextScheduledInterview) {
+          const exists = all.some((i) => i.id === json.data.nextScheduledInterview.id);
+          if (!exists) all.unshift(json.data.nextScheduledInterview);
         }
-      })
-      .catch((err) => console.error("Error loading assigned interviews:", err))
-      .finally(() => setLoading(false));
-  };
+        setInterviews(all);
+      }
+    } catch (err) {
+      console.warn("Error loading assigned interviews:", err);
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let resolvedEmail = "";
-    try {
-      const saved = localStorage.getItem("linktest_current_user");
-      if (saved) {
-        const u = JSON.parse(saved);
-        if (u.email) {
-          resolvedEmail = u.email;
-          setStudentUser({
-            name: u.fullName || u.email.split("@")[0],
-            email: u.email,
-          });
-        }
-      }
-    } catch {}
-
-    loadInterviews(resolvedEmail);
-    const interval = setInterval(() => loadInterviews(resolvedEmail), 3000);
+    const email = authUser?.email || "";
+    emailRef.current = email;
+    loadInterviews(email, false);
+    const interval = setInterval(() => loadInterviews(emailRef.current, true), 12000);
     return () => clearInterval(interval);
-  }, []);
+  }, [authUser?.email, loadInterviews]);
 
   const handleRequestStart = async (id: string) => {
     setRequestingId(id);
@@ -121,7 +125,8 @@ export default function StudentInterviewsListPage() {
   );
 
   return (
-    <AppShell role="student" userName={studentUser.name} userEmail={studentUser.email}>
+    <ProtectedRoute allowedRoles={["student"]}>
+      <AppShell role="student" userName={studentUser.name} userEmail={studentUser.email}>
       <div className="max-w-[1400px] mx-auto space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-[#E2E8F0] gap-4">
           <div>
@@ -264,5 +269,6 @@ export default function StudentInterviewsListPage() {
         )}
       </div>
     </AppShell>
-  );
+  </ProtectedRoute>
+);
 }

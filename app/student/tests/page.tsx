@@ -1,12 +1,19 @@
+"use client";
+
 import Link from 'next/link';
 import { AppShell } from '@/components/layout/AppShell';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { useAuth } from '@/lib/authContext';
 import { activeTestsStore } from '@/server/repositories/testRepository';
 import { Clock, ArrowRight, ShieldCheck, FileCheck2 } from 'lucide-react';
 
 export default function StudentTestsListPage() {
+  const { user: authUser } = useAuth();
+
   return (
-    <AppShell role="student" userName="Rahul Sharma">
-      <div className="space-y-6">
+    <ProtectedRoute allowedRoles={["student"]}>
+      <AppShell role="student" userName={authUser?.fullName || "Candidate"} userEmail={authUser?.email}>
+        <div className="space-y-6">
         <div>
           <h2 className="text-2xl font-serif font-bold text-slate-900">Assigned Mock Examinations</h2>
           <p className="text-sm text-slate-500">
@@ -58,5 +65,6 @@ export default function StudentTestsListPage() {
         </div>
       </div>
     </AppShell>
-  );
+  </ProtectedRoute>
+);
 }

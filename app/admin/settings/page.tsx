@@ -2,6 +2,8 @@
 
 import React, { useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { useAuth } from "@/lib/authContext";
 import {
   Settings,
   Sparkles,
@@ -28,8 +30,11 @@ export default function AdminSettingsPage() {
     setTimeout(() => setSavedSuccess(false), 3000);
   };
 
+  const { user: authUser } = useAuth();
+
   return (
-    <AppShell role="admin" userName="Rahul Sir (Founder & Admin)" userEmail="rahul.sir@linktest.io">
+    <ProtectedRoute allowedRoles={["admin"]}>
+      <AppShell role="admin" userName={authUser?.fullName || "Administrator"} userEmail={authUser?.email || "admin@linktest.io"}>
       <div className="max-w-3xl mx-auto space-y-6">
         {/* Header */}
         <div className="pb-5 border-b border-[#E2E8F0]">
@@ -172,5 +177,6 @@ export default function AdminSettingsPage() {
         </form>
       </div>
     </AppShell>
-  );
+  </ProtectedRoute>
+);
 }

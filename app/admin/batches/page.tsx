@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { useAuth } from "@/lib/authContext";
 import {
   BookOpen,
   Plus,
@@ -121,7 +123,7 @@ export default function AdminBatchesPage() {
     loadData(false);
     const interval = setInterval(() => {
       loadData(true);
-    }, 4000);
+    }, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -193,8 +195,11 @@ export default function AdminBatchesPage() {
     }
   };
 
+  const { user: authUser } = useAuth();
+
   return (
-    <AppShell role="admin" userName="Rahul Sir (Founder & Admin)" userEmail="rahul.sir@linktest.io">
+    <ProtectedRoute allowedRoles={["admin"]}>
+      <AppShell role="admin" userName={authUser?.fullName || "Administrator"} userEmail={authUser?.email || "admin@linktest.io"}>
       <div className="max-w-[1400px] mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-[#E2E8F0] gap-4">
@@ -483,5 +488,6 @@ export default function AdminBatchesPage() {
         )}
       </div>
     </AppShell>
-  );
+  </ProtectedRoute>
+);
 }

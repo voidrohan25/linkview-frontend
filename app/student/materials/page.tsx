@@ -3,6 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { BookOpen, FileText, Download, Sparkles, ExternalLink } from "lucide-react";
 
 export default function StudentMaterialsPage() {
@@ -34,7 +35,8 @@ export default function StudentMaterialsPage() {
   ];
 
   return (
-    <AppShell role="student">
+    <ProtectedRoute allowedRoles={["student"]}>
+      <AppShell role="student">
       <div className="max-w-[1400px] mx-auto space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-[#E2E8F0] gap-4">
           <div>
@@ -83,5 +85,6 @@ export default function StudentMaterialsPage() {
         </div>
       </div>
     </AppShell>
-  );
+  </ProtectedRoute>
+);
 }

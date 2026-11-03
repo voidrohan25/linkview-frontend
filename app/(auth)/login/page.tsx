@@ -1,12 +1,14 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Lock, Mail, ShieldAlert, Sparkles, CheckCircle2, ShieldCheck } from "lucide-react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { useAuth } from "@/lib/authContext";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { loginWithPassword, loginWithGoogleEmail, status, role } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -14,51 +16,25 @@ export default function LoginPage() {
   const [googleModalOpen, setGoogleModalOpen] = useState(false);
   const [googleInputEmail, setGoogleInputEmail] = useState("");
 
+  // If session is already verified and active, automatically redirect to their dashboard
+  useEffect(() => {
+    if (status === "READY" && role) {
+      router.replace(`/${role}/dashboard`);
+    }
+  }, [status, role, router]);
+
   const performLogin = async (loginEmail: string, loginPassword?: string, isGoogle = false) => {
     setLoading(true);
     setError(null);
 
     try {
-      // Always purge conflicting stale Supabase Google sessions before password login
-      if (!isGoogle) {
-        try {
-          await supabase.auth.signOut();
-        } catch {}
-        if (typeof window !== "undefined") {
-          try {
-            Object.keys(localStorage).forEach((key) => {
-              if (key.startsWith("sb-") && key.endsWith("-auth-token")) {
-                localStorage.removeItem(key);
-              }
-            });
-            localStorage.removeItem("linktest_current_user");
-            localStorage.removeItem("linktest_current_role");
-          } catch {}
-        }
+      if (isGoogle) {
+        const res = await loginWithGoogleEmail(loginEmail);
+        router.push(res.redirectTo);
+      } else {
+        const res = await loginWithPassword(loginEmail, loginPassword);
+        router.push(res.redirectTo);
       }
-
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: loginEmail,
-          password: loginPassword,
-          provider: isGoogle ? "google" : "email",
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Authentication failed. Please verify credentials.");
-      }
-
-      // Persist auth details in localStorage for client state
-      if (typeof window !== "undefined") {
-        localStorage.setItem("linktest_current_user", JSON.stringify(data.user));
-        localStorage.setItem("linktest_current_role", data.role);
-      }
-
-      router.push(data.redirectTo || "/student/dashboard");
     } catch (err: unknown) {
       const e = err as Error;
       setError(e.message || "Failed to authenticate");

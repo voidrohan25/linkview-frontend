@@ -3,6 +3,7 @@
 import React, { use, useState, useEffect } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import {
   Award,
   CheckCircle2,
@@ -60,7 +61,8 @@ export default function StudentScorecardReportPage({
   } : null);
 
   return (
-    <AppShell role="student">
+    <ProtectedRoute allowedRoles={["student"]}>
+      <AppShell role="student">
       <div className="max-w-[1100px] mx-auto space-y-6">
         {/* Top Action Nav */}
         <div className="flex items-center justify-between pb-4 border-b border-[#E2E8F0]">
@@ -269,5 +271,6 @@ export default function StudentScorecardReportPage({
         </div>
       </div>
     </AppShell>
-  );
+  </ProtectedRoute>
+);
 }

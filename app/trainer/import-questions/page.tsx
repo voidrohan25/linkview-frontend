@@ -4,6 +4,8 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { useAuth } from "@/lib/authContext";
 import {
   FileQuestion,
   Sparkles,
@@ -458,8 +460,20 @@ export default function TrainerImportQuestionsPage() {
     return matchesTech && matchesQuery;
   });
 
+  const { user: authUser } = useAuth();
+
+  useEffect(() => {
+    if (authUser?.email) {
+      setTrainerUser({
+        name: authUser.fullName || authUser.email.split("@")[0],
+        email: authUser.email,
+      });
+    }
+  }, [authUser]);
+
   return (
-    <AppShell role="trainer" userName={trainerUser.name} userEmail={trainerUser.email}>
+    <ProtectedRoute allowedRoles={["trainer"]}>
+      <AppShell role="trainer" userName={trainerUser.name} userEmail={trainerUser.email}>
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-[#E2E8F0] gap-3">
@@ -1279,5 +1293,6 @@ export default function TrainerImportQuestionsPage() {
         )}
       </div>
     </AppShell>
-  );
+  </ProtectedRoute>
+);
 }

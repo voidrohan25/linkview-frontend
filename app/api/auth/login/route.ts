@@ -68,7 +68,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // Check if Trainer
+    // Check if Trainer in trainer roster
     const trainer = findTrainerByEmail(normalizedEmail);
     if (trainer && trainer.status !== 'suspended') {
       if (trainer.status === 'invited') {
@@ -89,9 +89,56 @@ export async function POST(req: Request) {
       });
     }
 
-    // Default to Student
+    // Check existing platform user record
     const existing = getUserByEmail(normalizedEmail);
-    const studentUser = existing || getOrCreateGoogleUser({
+    if (existing) {
+      if (existing.role === 'trainer') {
+        return NextResponse.json({
+          success: true,
+          user: {
+            id: existing.id,
+            fullName: existing.fullName,
+            email: existing.email,
+            role: 'trainer',
+            batchCodes: existing.batchCode ? [existing.batchCode] : ['GLOBAL'],
+          },
+          role: 'trainer',
+          redirectTo: '/trainer/dashboard',
+        });
+      }
+
+      if (existing.role === 'super_admin') {
+        return NextResponse.json({
+          success: true,
+          user: {
+            id: existing.id,
+            fullName: existing.fullName,
+            email: existing.email,
+            role: 'admin',
+            batchCode: 'GLOBAL',
+          },
+          role: 'admin',
+          redirectTo: '/admin/dashboard',
+        });
+      }
+
+      // Existing student
+      return NextResponse.json({
+        success: true,
+        user: {
+          id: existing.id,
+          fullName: existing.fullName,
+          email: existing.email,
+          role: 'student',
+          batchCode: existing.batchCode,
+        },
+        role: 'student',
+        redirectTo: '/student/dashboard',
+      });
+    }
+
+    // New user default to Student
+    const studentUser = getOrCreateGoogleUser({
       email: normalizedEmail,
       fullName: fullName || normalizedEmail.split('@')[0],
     });

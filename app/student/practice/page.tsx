@@ -3,6 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { Mic, Sparkles, MessageSquare, Award, ArrowRight, ShieldCheck, CheckCircle2 } from "lucide-react";
 
 export default function StudentPracticePage() {
@@ -65,7 +66,8 @@ export default function StudentPracticePage() {
   ];
 
   return (
-    <AppShell role="student">
+    <ProtectedRoute allowedRoles={["student"]}>
+      <AppShell role="student">
       <div className="max-w-[1280px] mx-auto space-y-6">
         {/* Header */}
         <div className="p-6 rounded-2xl bg-white border border-[#E2E8F0] shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -136,5 +138,6 @@ export default function StudentPracticePage() {
         </div>
       </div>
     </AppShell>
-  );
+  </ProtectedRoute>
+);
 }

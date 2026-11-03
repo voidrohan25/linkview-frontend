@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthProvider } from "@/lib/authContext";
 
 export const metadata: Metadata = {
   title: "LinkTest AI Interview · Institute Mock Interview Platform",
@@ -22,7 +23,7 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col font-sans bg-[#F8FAFC] text-[#0F172A]">
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

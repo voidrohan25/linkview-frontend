@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { AppShell } from "@/components/layout/AppShell";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { useAuth } from "@/lib/authContext";
 import {
   Users,
   Search,
@@ -113,20 +115,11 @@ export default function AdminUsersPage() {
             localStorage.setItem("linkview_admin_users_cache", JSON.stringify(merged));
           } catch {}
 
-          // If local list has more users than server (cold start lambda), sync server
-          if (prevUsers.length > json.data.length && json.data.length > 0) {
-            fetch("/api/admin/users", {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: "sync_users", users: merged }),
-            }).catch(() => {});
-          }
-
           return merged;
         });
       }
     } catch (err) {
-      console.error("Failed to load users:", err);
+      console.warn("Failed to load users:", err);
     } finally {
       if (!silent) setLoading(false);
     }
@@ -134,10 +127,10 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     loadUsers();
-    // Auto-poll every 3 seconds to instantly detect when a new student signs in
+    // Gentle background poll every 15 seconds to detect newly registered candidates
     const interval = setInterval(() => {
       loadUsers(true);
-    }, 3000);
+    }, 15000);
     return () => clearInterval(interval);
   }, [loadUsers]);
 
@@ -298,8 +291,11 @@ export default function AdminUsersPage() {
     }
   };
 
+  const { user: authUser } = useAuth();
+
   return (
-    <AppShell role="admin" userName="Rahul Sir (Admin)" userEmail="rahul.sir@linktest.io">
+    <ProtectedRoute allowedRoles={["admin"]}>
+      <AppShell role="admin" userName={authUser?.fullName || "Administrator"} userEmail={authUser?.email || "admin@linktest.io"}>
       <div className="max-w-[1400px] mx-auto space-y-6">
         {/* Top Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-[#E2E8F0] gap-4">
@@ -321,7 +317,7 @@ export default function AdminUsersPage() {
           <div className="flex items-center gap-2.5">
             <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-              <span>Live Auto-Sync (3s)</span>
+              <span>Live Auto-Sync</span>
             </span>
 
             <button
@@ -654,5 +650,6 @@ export default function AdminUsersPage() {
         )}
       </div>
     </AppShell>
-  );
+  </ProtectedRoute>
+);
 }

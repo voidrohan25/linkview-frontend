@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { useAuth } from "@/lib/authContext";
 import {
   BookOpen,
   Users,
@@ -40,17 +42,29 @@ export default function TrainerDashboardPage() {
   const [students, setStudents] = useState<any[]>([]);
   const [filterTab, setFilterTab] = useState<"ALL" | "PENDING" | "COMPLETED">("ALL");
   const [evaluatingId, setEvaluatingId] = useState<string | null>(null);
+  const { user: authUser } = useAuth();
   const [loading, setLoading] = useState(true);
-
   const [trainerUser, setTrainerUser] = useState({
-    name: "Faculty Trainer",
-    email: "",
+    name: authUser?.fullName || "Faculty Trainer",
+    email: authUser?.email || "",
   });
+  const emailRef = useRef(authUser?.email || "");
+
+  useEffect(() => {
+    if (authUser?.email) {
+      emailRef.current = authUser.email;
+      setTrainerUser({
+        name: authUser.fullName || authUser.email.split("@")[0],
+        email: authUser.email,
+      });
+    }
+  }, [authUser]);
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const emailParam = trainerUser.email ? `&email=${encodeURIComponent(trainerUser.email)}` : "";
+      const email = emailRef.current;
+      const emailParam = email ? `&email=${encodeURIComponent(email)}` : "";
       const [intRes, bRes, sRes] = await Promise.all([
         fetch(`/api/interviews?role=trainer${emailParam}`),
         fetch("/api/batches"),
@@ -71,30 +85,19 @@ export default function TrainerDashboardPage() {
         setStudents(sJson.data);
       }
     } catch (err) {
-      console.error("Failed to load trainer dashboard:", err);
+      console.warn("Failed to load trainer dashboard:", err);
     } finally {
       if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("linktest_current_user");
-      if (saved) {
-        const u = JSON.parse(saved);
-        if (u.fullName || u.email) {
-          setTrainerUser({
-            name: u.fullName || u.email.split("@")[0],
-            email: u.email,
-          });
-        }
-      }
-    } catch {}
-
+    const email = authUser?.email || "";
+    emailRef.current = email;
     loadData(false);
-    const interval = setInterval(() => loadData(true), 3000);
+    const interval = setInterval(() => loadData(true), 12000);
     return () => clearInterval(interval);
-  }, [loadData]);
+  }, [authUser?.email, loadData]);
 
   const pendingList = interviews.filter(
     (i) => i.status === "pending_evaluation" || i.approvalStatus === "pending"
@@ -135,7 +138,8 @@ export default function TrainerDashboardPage() {
   };
 
   return (
-    <AppShell role="trainer" userName={trainerUser.name} userEmail={trainerUser.email}>
+    <ProtectedRoute allowedRoles={["trainer"]}>
+      <AppShell role="trainer" userName={trainerUser.name} userEmail={trainerUser.email}>
       <div className="max-w-[1400px] mx-auto space-y-6">
         {/* Faculty Command Center Gradient Banner */}
         <div
@@ -404,5 +408,6 @@ export default function TrainerDashboardPage() {
         </div>
       </div>
     </AppShell>
-  );
+  </ProtectedRoute>
+);
 }

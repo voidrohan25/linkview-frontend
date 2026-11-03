@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import { AppShell } from "@/components/layout/AppShell";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { useAuth } from "@/lib/authContext";
 import { supabase } from "@/lib/supabase";
 import { User, Mail, Phone, BookOpen, GraduationCap, ShieldCheck, CheckCircle2, Award } from "lucide-react";
 
@@ -99,7 +101,8 @@ export default function StudentProfilePage() {
     : "ST";
 
   return (
-    <AppShell role="student" userName={student.fullName} userEmail={student.email}>
+    <ProtectedRoute allowedRoles={["student"]}>
+      <AppShell role="student" userName={student.fullName} userEmail={student.email}>
       <div className="max-w-[960px] mx-auto space-y-6">
         <div className="p-6 rounded-2xl bg-white border border-[#E2E8F0] shadow-sm flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -182,5 +185,6 @@ export default function StudentProfilePage() {
         </div>
       </div>
     </AppShell>
-  );
+  </ProtectedRoute>
+);
 }

@@ -2,6 +2,8 @@
 
 import React, { useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { useAuth } from "@/lib/authContext";
 import {
   FileQuestion,
   Plus,
@@ -137,8 +139,11 @@ export default function AdminQuestionBankPage() {
     return matchesSearch && matchesTech;
   });
 
+  const { user: authUser } = useAuth();
+
   return (
-    <AppShell role="admin" userName="Rahul Sir (Founder & Admin)" userEmail="rahul.sir@linktest.io">
+    <ProtectedRoute allowedRoles={["admin"]}>
+      <AppShell role="admin" userName={authUser?.fullName || "Administrator"} userEmail={authUser?.email || "admin@linktest.io"}>
       <div className="max-w-[1400px] mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-[#E2E8F0] gap-4">
@@ -367,5 +372,6 @@ export default function AdminQuestionBankPage() {
         )}
       </div>
     </AppShell>
-  );
+  </ProtectedRoute>
+);
 }

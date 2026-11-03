@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx tests/test_scoring_engine.mjs && tsx tests/test_trainer_invitation_flow.mjs && tsx tests/test_api_endpoints.mjs"
+    "test": "tsx tests/test_scoring_engine.mjs && tsx tests/test_trainer_invitation_flow.mjs && tsx tests/test_api_endpoints.mjs && tsx tests/test_auth_suite.mjs && tsx tests/test_stability_and_roles.mjs && tsx tests/test_interview_engine.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

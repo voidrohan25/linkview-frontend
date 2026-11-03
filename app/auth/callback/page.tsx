@@ -1,16 +1,22 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/authContext';
 import { ShieldCheck, AlertCircle } from 'lucide-react';
 
 export default function AuthCallbackPage() {
   const router = useRouter();
-  const [status, setStatus] = useState('Verifying Google credentials and resolving account role...');
+  const { loginWithGoogleEmail } = useAuth();
+  const [status, setStatus] = useState('Verifying Google credentials and resolving authoritative database role...');
   const [error, setError] = useState('');
+  const executedRef = useRef(false);
 
   useEffect(() => {
+    if (executedRef.current) return;
+    executedRef.current = true;
+
     async function handleAuth() {
       try {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -28,41 +34,11 @@ export default function AuthCallbackPage() {
             session.user.user_metadata?.picture ||
             undefined;
 
-          if (typeof window !== "undefined") {
-            localStorage.setItem(
-              "linktest_current_user",
-              JSON.stringify({
-                id: session.user.id,
-                email: email,
-                fullName: fullName,
-                role: "student",
-                avatarUrl,
-              })
-            );
-            localStorage.setItem("linktest_current_role", "student");
-          }
-
-          const res = await fetch('/api/auth/me', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, fullName, avatarUrl }),
-          });
-          const authData = await res.json();
-          if (authData.success) {
-            if (authData.user && typeof window !== "undefined") {
-              localStorage.setItem("linktest_current_user", JSON.stringify({
-                ...authData.user,
-                fullName: authData.user.fullName || fullName,
-              }));
-              localStorage.setItem("linktest_current_role", authData.role || "student");
-            }
-            router.push(authData.redirectTo);
-          } else {
-            router.push('/student/dashboard');
-          }
+          const result = await loginWithGoogleEmail(email, fullName, avatarUrl);
+          router.replace(result.redirectTo);
         } else {
           // If no active session detected, redirect to student login
-          router.push('/login');
+          router.replace('/login');
         }
       } catch (err: unknown) {
         const e = err as Error;
@@ -71,7 +47,7 @@ export default function AuthCallbackPage() {
     }
 
     handleAuth();
-  }, [router]);
+  }, [loginWithGoogleEmail, router]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center font-sans p-6">

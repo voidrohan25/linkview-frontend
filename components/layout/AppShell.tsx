@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/authContext";
 import {
   LayoutDashboard,
   Users,
@@ -64,81 +64,33 @@ export function AppShell({
   const role: NormalizedRole = inputRole === "super_admin" ? "admin" : inputRole;
   const pathname = usePathname();
   const router = useRouter();
+  const { user: authUser, logout: authLogout } = useAuth();
 
-  const [activeUser, setActiveUser] = useState({
-    name: userName || (role === "admin" ? "Administrator" : role === "trainer" ? "Faculty Trainer" : "Candidate"),
-    email: userEmail || (role === "admin" ? "admin@linktest.io" : "candidate@linktest.io"),
-  });
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  useEffect(() => {
-    // 1. Check authoritative client storage first (highest priority)
-    let storedUser: any = null;
-    try {
-      const saved = localStorage.getItem("linktest_current_user");
-      if (saved) {
-        storedUser = JSON.parse(saved);
-        if (storedUser.fullName || storedUser.email) {
-          setActiveUser({
-            name: storedUser.fullName || storedUser.email.split("@")[0],
-            email: storedUser.email,
-          });
-        }
-      }
-    } catch {}
-
-    // 2. Only sync with Supabase Auth session if appropriate (never overwrite an active Admin or Trainer session)
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user?.email) {
-        // If user already logged in with explicit credentials and email differs, ignore conflicting Supabase user
-        if (storedUser?.email && storedUser.email.toLowerCase() !== user.email.toLowerCase()) {
-          console.warn("Supabase session email differs from stored active login; keeping stored login:", storedUser.email);
-          return;
-        }
-
-        // If current role is admin and Supabase user is not an admin, never downgrade to student
-        if (role === "admin" && !user.email.toLowerCase().includes("admin") && user.email.toLowerCase() !== "rahul.sir@linktest.io") {
-          return;
-        }
-
-        const resolvedName =
-          user.user_metadata?.full_name ||
-          user.user_metadata?.name ||
-          user.email.split("@")[0];
-        setActiveUser({
-          name: resolvedName,
-          email: user.email,
-        });
-        try {
-          localStorage.setItem(
-            "linktest_current_user",
-            JSON.stringify({
-              id: user.id,
-              email: user.email,
-              fullName: resolvedName,
-              role: role,
-            })
-          );
-        } catch {}
-      }
-    }).catch(() => {});
-  }, [role, userEmail]);
+  // Authoritatively derive display user from global AuthContext with props fallback
+  const activeUser = {
+    name:
+      authUser?.fullName ||
+      userName ||
+      (role === "admin"
+        ? "Administrator"
+        : role === "trainer"
+        ? "Faculty Trainer"
+        : "Candidate"),
+    email:
+      authUser?.email ||
+      userEmail ||
+      (role === "admin"
+        ? "admin@linktest.io"
+        : role === "trainer"
+        ? "trainer@linktest.io"
+        : "candidate@linktest.io"),
+  };
 
   const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch {}
-    try {
-      Object.keys(localStorage).forEach((key) => {
-        if (key.startsWith("sb-") && key.endsWith("-auth-token")) {
-          localStorage.removeItem(key);
-        }
-      });
-      localStorage.removeItem("linktest_current_user");
-      localStorage.removeItem("linktest_current_role");
-    } catch {}
-    router.push("/login");
+    await authLogout();
   };
 
   useEffect(() => {

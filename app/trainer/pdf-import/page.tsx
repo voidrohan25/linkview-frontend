@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/layout/AppShell';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { useAuth } from '@/lib/authContext';
 import { 
   UploadCloud, 
   FileText, 
@@ -84,8 +86,11 @@ export default function PdfImportPage() {
     setQuestions(updated);
   };
 
+  const { user: authUser } = useAuth();
+
   return (
-    <AppShell role="trainer" userName="Senior Instructor">
+    <ProtectedRoute allowedRoles={["trainer"]}>
+      <AppShell role="trainer" userName={authUser?.fullName || "Faculty Trainer"} userEmail={authUser?.email}>
       <div className="max-w-4xl mx-auto space-y-8">
         <div>
           <div className="flex items-center gap-2 text-indigo-600 text-xs font-bold uppercase tracking-wider mb-2">
@@ -249,5 +254,6 @@ export default function PdfImportPage() {
         )}
       </div>
     </AppShell>
-  );
+  </ProtectedRoute>
+);
 }

@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
-import { supabase } from "@/lib/supabase";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { useAuth } from "@/lib/authContext";
 import {
   Calendar,
   Clock,
@@ -58,11 +59,12 @@ interface CommunicationTrack {
 }
 
 export default function StudentDashboardPage() {
+  const { user: authUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [student, setStudent] = useState({
-    fullName: "Student",
-    email: "",
-    batchName: "Placement Cohort 2026",
+    fullName: authUser?.fullName || "Student",
+    email: authUser?.email || "",
+    batchName: authUser?.batchCode || "UNASSIGNED",
   });
   const [nextInterview, setNextInterview] = useState<ScheduledInterview | null>(null);
   const [upcomingInterviews, setUpcomingInterviews] = useState<ScheduledInterview[]>([]);
@@ -70,81 +72,64 @@ export default function StudentDashboardPage() {
   const [freeTracks, setFreeTracks] = useState<CommunicationTrack[]>([]);
   const [countdown, setCountdown] = useState<string>("");
   const [requestingApproval, setRequestingApproval] = useState(false);
-
-  const loadDashboard = useCallback((userEmail?: string, silent = false) => {
-    if (!silent) setLoading(true);
-    const emailToUse = userEmail || student.email;
-    const url = emailToUse
-      ? `/api/interviews?role=student&email=${encodeURIComponent(emailToUse)}`
-      : `/api/interviews?role=student`;
-
-    fetch(url)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.data) {
-          if (data.data.student) {
-            setStudent((prev) => ({
-              ...prev,
-              fullName: data.data.student.fullName || prev.fullName,
-              email: data.data.student.email || prev.email,
-              batchName: data.data.student.batchName || "UNASSIGNED",
-            }));
-          }
-          setNextInterview(data.data.nextScheduledInterview || null);
-          setUpcomingInterviews(data.data.upcomingInterviews || []);
-          setCompletedInterviews(data.data.completedInterviews || []);
-          setFreeTracks(data.data.freeCommunicationTracks || []);
-        }
-      })
-      .catch((err) => console.error("Error loading student dashboard:", err))
-      .finally(() => {
-        if (!silent) setLoading(false);
-      });
-  }, [student.email]);
+  const activeEmailRef = useRef<string>("");
 
   useEffect(() => {
-    let resolvedEmail = "";
-    // 1. Sync real student profile from localStorage & Supabase
+    if (authUser?.email) {
+      activeEmailRef.current = authUser.email;
+      setStudent((prev) => ({
+        ...prev,
+        fullName: authUser.fullName || prev.fullName,
+        email: authUser.email,
+        batchName: authUser.batchCode || prev.batchName,
+      }));
+    }
+  }, [authUser]);
+
+  const loadDashboard = useCallback(async (userEmail?: string, silent = false) => {
+    const emailToUse = userEmail || activeEmailRef.current;
+    if (!silent) setLoading(true);
+
     try {
-      const saved = localStorage.getItem("linktest_current_user");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.email) {
-          resolvedEmail = parsed.email;
+      const url = emailToUse
+        ? `/api/interviews?role=student&email=${encodeURIComponent(emailToUse)}`
+        : `/api/interviews?role=student`;
+
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (data.success && data.data) {
+        if (data.data.student) {
           setStudent((prev) => ({
-            ...prev,
-            fullName: parsed.fullName || parsed.email.split("@")[0],
-            email: parsed.email,
+            fullName: data.data.student.fullName || prev.fullName,
+            email: data.data.student.email || prev.email,
+            batchName: data.data.student.batchName || prev.batchName || "UNASSIGNED",
           }));
         }
+        setNextInterview(data.data.nextScheduledInterview || null);
+        setUpcomingInterviews(data.data.upcomingInterviews || []);
+        setCompletedInterviews(data.data.completedInterviews || []);
+        setFreeTracks(data.data.freeCommunicationTracks || []);
       }
-    } catch {}
+    } catch (err) {
+      console.warn("Error loading student dashboard:", err);
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, []);
 
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user?.email) {
-        resolvedEmail = user.email;
-        const name =
-          user.user_metadata?.full_name ||
-          user.user_metadata?.name ||
-          user.email.split("@")[0];
-        setStudent((prev) => ({
-          ...prev,
-          fullName: name,
-          email: user.email!,
-        }));
-      }
-      loadDashboard(resolvedEmail, false);
-    }).catch(() => {
-      loadDashboard(resolvedEmail, false);
-    });
+  useEffect(() => {
+    const email = authUser?.email || "";
+    activeEmailRef.current = email;
+    loadDashboard(email, false);
 
-    // Real-time polling every 3 seconds so trainer approvals update the room instantly
+    // Non-intrusive polling every 12 seconds with silent=true
     const pollInterval = setInterval(() => {
-      loadDashboard(resolvedEmail || student.email, true);
-    }, 3000);
+      loadDashboard(activeEmailRef.current, true);
+    }, 12000);
 
     return () => clearInterval(pollInterval);
-  }, [loadDashboard, student.email]);
+  }, [authUser?.email, loadDashboard]);
 
   // Real-time countdown timer for next scheduled interview
   useEffect(() => {
@@ -214,7 +199,8 @@ export default function StudentDashboardPage() {
   });
 
   return (
-    <AppShell role="student" userName={student.fullName} userEmail={student.email}>
+    <ProtectedRoute allowedRoles={["student"]}>
+      <AppShell role="student" userName={student.fullName} userEmail={student.email}>
       <div className="max-w-[1280px] mx-auto space-y-6">
         {/* A. WELCOME SECTION */}
         <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#E2E8F0] shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -555,5 +541,6 @@ export default function StudentDashboardPage() {
         )}
       </div>
     </AppShell>
-  );
+  </ProtectedRoute>
+);
 }

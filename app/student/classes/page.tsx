@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { useAuth } from '@/lib/authContext';
 import { 
   Video, 
   Camera, 
@@ -39,7 +41,7 @@ export default function StudentClassesPage() {
 
   useEffect(() => {
     fetchSession();
-    const interval = setInterval(fetchSession, 3000);
+    const interval = setInterval(fetchSession, 12000);
 
     // Fetch student LiveKit room token
     fetch('/api/live-classes/token?room=live-dsa-class-1&identity=student-me&role=student')
@@ -91,8 +93,11 @@ export default function StudentClassesPage() {
     }
   };
 
+  const { user: authUser } = useAuth();
+
   return (
-    <AppShell role="student" userName="Rahul Sharma">
+    <ProtectedRoute allowedRoles={["student"]}>
+      <AppShell role="student" userName={authUser?.fullName || "Candidate"} userEmail={authUser?.email}>
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -259,5 +264,6 @@ export default function StudentClassesPage() {
         </div>
       </div>
     </AppShell>
-  );
+  </ProtectedRoute>
+);
 }

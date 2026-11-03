@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { useAuth } from "@/lib/authContext";
 import {
   Users,
   GraduationCap,
@@ -50,28 +52,27 @@ interface AdminStats {
 }
 
 export default function AdminDashboardPage() {
+  const { user: authUser } = useAuth();
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastChecked, setLastChecked] = useState<string>("Just now");
   const [adminUser, setAdminUser] = useState({
-    name: "Rahul Sir (Founder & Admin)",
-    email: "rahul.sir@linktest.io",
+    name: authUser?.fullName || "Administrator",
+    email: authUser?.email || "admin@linktest.io",
   });
 
-  const loadData = async () => {
-    try {
-      const saved = localStorage.getItem("linktest_current_user");
-      if (saved) {
-        const u = JSON.parse(saved);
-        if (u.fullName || u.email) {
-          setAdminUser({
-            name: u.fullName || u.email.split("@")[0],
-            email: u.email,
-          });
-        }
-      }
-    } catch {}
+  useEffect(() => {
+    if (authUser?.email) {
+      setAdminUser({
+        name: authUser.fullName || authUser.email.split("@")[0],
+        email: authUser.email,
+      });
+    }
+  }, [authUser]);
+
+  const loadData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
 
     try {
       const res = await fetch("/api/interviews?role=admin");
@@ -80,27 +81,28 @@ export default function AdminDashboardPage() {
         setStats(json.data);
       }
     } catch (err) {
-      console.error("Failed to load admin dashboard:", err);
+      console.warn("Failed to load admin dashboard:", err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
       setRefreshing(false);
       setLastChecked(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadData();
-    const interval = setInterval(() => loadData(), 3000);
+    loadData(false);
+    const interval = setInterval(() => loadData(true), 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [loadData]);
 
   const handleRefresh = () => {
     setRefreshing(true);
-    loadData();
+    loadData(false);
   };
 
   return (
-    <AppShell role="admin" userName={adminUser.name} userEmail={adminUser.email}>
+    <ProtectedRoute allowedRoles={["admin"]}>
+      <AppShell role="admin" userName={adminUser.name} userEmail={adminUser.email}>
       <div className="max-w-[1400px] mx-auto space-y-6">
         {/* Top Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-5 border-b border-[#E2E8F0]">
@@ -440,5 +442,6 @@ export default function AdminDashboardPage() {
         </div>
       </div>
     </AppShell>
-  );
+  </ProtectedRoute>
+);
 }

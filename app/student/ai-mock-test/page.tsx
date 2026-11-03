@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { useAuth } from '@/lib/authContext';
 import { 
   Sparkles, 
   Brain, 
@@ -72,8 +74,11 @@ export default function AiMockTestPage() {
     };
   };
 
+  const { user: authUser } = useAuth();
+
   return (
-    <AppShell role="student" userName="Rahul Sharma">
+    <ProtectedRoute allowedRoles={["student"]}>
+      <AppShell role="student" userName={authUser?.fullName || "Candidate"} userEmail={authUser?.email}>
       <div className="max-w-4xl mx-auto space-y-8 font-sans">
         <div>
           <div className="flex items-center gap-2 text-indigo-600 text-xs font-bold uppercase tracking-wider mb-1">
@@ -308,5 +313,6 @@ export default function AiMockTestPage() {
         )}
       </div>
     </AppShell>
-  );
+  </ProtectedRoute>
+);
 }

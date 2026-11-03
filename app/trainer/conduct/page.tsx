@@ -3,6 +3,8 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { useAuth } from "@/lib/authContext";
 import {
   Video,
   Mic,
@@ -72,8 +74,20 @@ export default function TrainerConductPage() {
     }
   };
 
+  const { user: authUser } = useAuth();
+
+  React.useEffect(() => {
+    if (authUser?.email) {
+      setTrainerUser({
+        name: authUser.fullName || authUser.email.split("@")[0],
+        email: authUser.email,
+      });
+    }
+  }, [authUser]);
+
   return (
-    <AppShell role="trainer" userName={trainerUser.name} userEmail={trainerUser.email}>
+    <ProtectedRoute allowedRoles={["trainer"]}>
+      <AppShell role="trainer" userName={trainerUser.name} userEmail={trainerUser.email}>
       <div className="max-w-[1400px] mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-[#E2E8F0] gap-4">
@@ -256,5 +270,6 @@ export default function TrainerConductPage() {
         </div>
       </div>
     </AppShell>
-  );
+  </ProtectedRoute>
+);
 }

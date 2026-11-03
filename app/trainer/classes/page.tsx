@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { useAuth } from '@/lib/authContext';
 import { 
   Video, 
   Mic, 
@@ -34,7 +36,7 @@ export default function TrainerClassesPage() {
 
   useEffect(() => {
     fetchSession();
-    const interval = setInterval(fetchSession, 4000);
+    const interval = setInterval(fetchSession, 12000);
 
     // Fetch LiveKit WebRTC credentials
     fetch('/api/live-classes/token?room=live-dsa-class-1&identity=trainer-kulkarni&role=trainer')
@@ -63,8 +65,11 @@ export default function TrainerClassesPage() {
     }
   };
 
+  const { user: authUser } = useAuth();
+
   return (
-    <AppShell role="trainer" userName="Prof. S. Kulkarni">
+    <ProtectedRoute allowedRoles={["trainer"]}>
+      <AppShell role="trainer" userName={authUser?.fullName || "Faculty Trainer"} userEmail={authUser?.email}>
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -197,5 +202,6 @@ export default function TrainerClassesPage() {
         </div>
       </div>
     </AppShell>
-  );
+  </ProtectedRoute>
+);
 }
