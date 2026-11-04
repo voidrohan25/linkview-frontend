@@ -537,7 +537,7 @@ export function StudentWebcamFeed({
       {/* Main Video Viewport */}
       <div
         className={`relative w-full bg-black flex items-center justify-center overflow-hidden ${
-          compact ? "aspect-[16/9] min-h-[160px] max-h-[220px]" : "aspect-[4/3]"
+          compact ? "aspect-[16/9] min-h-[180px] sm:min-h-[220px] max-h-[300px]" : "aspect-[16/9]"
         }`}
       >
         <video

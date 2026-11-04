@@ -218,17 +218,6 @@ export function AppShell({
               </span>
             </div>
           </Link>
-
-          <span
-            className="hidden sm:inline-flex text-[11px] font-bold px-2.5 py-0.5 rounded"
-            style={{
-              color: roleLabels[role].color,
-              background: roleLabels[role].bg,
-              border: `1px solid ${roleLabels[role].border}`,
-            }}
-          >
-            {roleLabels[role].title}
-          </span>
         </div>
 
         {/* Center Session Notice */}

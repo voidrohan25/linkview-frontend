@@ -229,9 +229,25 @@ export async function PUT(req: Request) {
       }
       session.currentQuestion = nextQuestion;
     } else {
-      // Completed session - Authoritative Weighted Rubric Calculation
+      // Completed session - Authoritative Multi-Turn Rubric Aggregation
+      const history = session.history || [];
+      const historyLen = Math.max(1, history.length);
+
       const avg = Math.round(
-        (session.history.reduce((a: number, b: any) => a + b.score, 0) / session.history.length) * 10
+        (history.reduce((a: number, b: any) => a + (Number(b.score) || 0), 0) / historyLen) * 10
+      );
+
+      const avgTechnical = Math.round(
+        history.reduce((a: number, b: any) => a + (Number(b.evaluationDetails?.technicalAccuracy) || (Number(b.score) || 5) * 10), 0) / historyLen
+      );
+      const avgConceptual = Math.round(
+        history.reduce((a: number, b: any) => a + (Number(b.evaluationDetails?.conceptualDepth) || (Number(b.score) || 5) * 9.5), 0) / historyLen
+      );
+      const avgCommunication = Math.round(
+        history.reduce((a: number, b: any) => a + (Number(b.evaluationDetails?.communication) || 75), 0) / historyLen
+      );
+      const avgProblemSolving = Math.round(
+        history.reduce((a: number, b: any) => a + (Number(b.evaluationDetails?.completeness) || (Number(b.score) || 5) * 9), 0) / historyLen
       );
 
       const events = session.proctoringEvents || [];
@@ -258,10 +274,10 @@ export async function PUT(req: Request) {
 
       session.scorecard = {
         overallScore: avg,
-        technicalAccuracy: evaluation.technicalAccuracy,
-        conceptualUnderstanding: evaluation.conceptualDepth,
-        communication: evaluation.communication,
-        problemSolving: evaluation.completeness,
+        technicalAccuracy: avgTechnical,
+        conceptualUnderstanding: avgConceptual,
+        communication: avgCommunication,
+        problemSolving: avgProblemSolving,
         strengths: evaluation.strengths,
         weaknesses: evaluation.weaknesses,
         recommendations: evaluation.recommendations,
@@ -277,7 +293,7 @@ export async function PUT(req: Request) {
     }
 
     // Sync back to interviewStore if found
-    interviewStore.updateInterviewTurn(session.id, answer, score, feedback, nextQuestion);
+    interviewStore.updateInterviewTurn(session.id, answer, score, feedback, nextQuestion, session.scorecard);
 
     return NextResponse.json({ success: true, data: session });
   } catch (err: unknown) {

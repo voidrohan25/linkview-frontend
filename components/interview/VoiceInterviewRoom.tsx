@@ -985,12 +985,12 @@ export function VoiceInterviewRoom({
             </div>
           </div>
 
-          {/* MAIN STAGE: TWO-COLUMN BALANCED GRID (Left: AI & Question, Right: Webcam & Live Transcript) */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 flex-1 min-h-0 items-stretch">
-            {/* COLUMN 1: AI Human Interviewer Avatar & Question Prompter */}
-            <div className="flex flex-col justify-between space-y-3 min-h-0">
-              {/* AI Avatar Tile */}
-              <div className="flex-1 min-h-0">
+          {/* MAIN STAGE: 3-SEGMENT BALANCED STAGE */}
+          <div className="flex flex-col space-y-4 flex-1 min-h-0">
+            {/* SEGMENTS 1 & 2: DUAL 16:9 VIDEO FEEDS (AI Interviewer & Candidate Webcam) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+              {/* SEGMENT 1: AI Lead Interviewer Feed */}
+              <div className="w-full flex flex-col">
                 <AIAvatar
                   isSpeaking={isSpeakingAI}
                   isListening={isListening}
@@ -1006,46 +1006,64 @@ export function VoiceInterviewRoom({
                 />
               </div>
 
-              {/* Integrated AI Question Prompter Card */}
-              <div className="card p-4 sm:p-4.5 bg-white border border-[#E2E8F0] shadow-sm rounded-2xl shrink-0 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-orange-600 uppercase tracking-wider">
-                    Question {currentTurn} of {totalTurns}
-                  </span>
-
-                  <button
-                    type="button"
-                    onClick={() => speakQuestion(currentQuestion)}
-                    disabled={isSpeakingAI}
-                    className="btn btn-outline btn-sm text-[11px] py-1 px-2.5 flex items-center gap-1.5 font-bold disabled:opacity-50"
-                  >
-                    <Volume2 size={12} className={isSpeakingAI ? "animate-pulse text-orange-500" : ""} />
-                    <span>{isSpeakingAI ? "Speaking..." : "Replay Question Audio"}</span>
-                  </button>
-                </div>
-
-                <h3 className="text-sm sm:text-base font-extrabold text-[#0F172A] leading-snug m-0">
-                  "{currentQuestion}"
-                </h3>
-              </div>
-            </div>
-
-            {/* COLUMN 2: Candidate Live Webcam & Live Spoken Transcript */}
-            <div className="flex flex-col justify-between space-y-3 min-h-0">
-              {/* Candidate Webcam Feed Tile */}
-              <div className="shrink-0">
+              {/* SEGMENT 2: Candidate Live Camera & Proctoring Feed */}
+              <div className="w-full flex flex-col">
                 <StudentWebcamFeed
                   externalStream={sharedStream}
                   onStreamReady={(stream) => setSharedStream(stream)}
                   onDetectionUpdate={handleDetectionUpdate}
                   onCameraStatusChange={(active) => setCameraActive(active)}
                   compact={true}
-                  className="shadow-md"
+                  className="h-full shadow-md"
                 />
               </div>
+            </div>
 
-              {/* Live Answer Transcript Panel with Internal Scroll */}
-              <div className="card p-4 bg-white border border-[#E2E8F0] shadow-sm rounded-2xl flex-1 flex flex-col justify-between min-h-0 space-y-2.5">
+            {/* SEGMENT 3: INTERACTIVE DIALOGUE & RESPONSE CONSOLE */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch flex-1 min-h-0">
+              {/* SUB-SEGMENT 3A: AI Question Prompter Card */}
+              <div className="card p-5 bg-white border border-[#E2E8F0] shadow-sm rounded-2xl flex flex-col justify-between space-y-3">
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-800 border border-orange-200 uppercase tracking-wider">
+                        Question {currentTurn} of {totalTurns}
+                      </span>
+                      <span className="text-[11px] font-semibold text-slate-500">
+                        • {track} Technical Viva
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => speakQuestion(currentQuestion)}
+                      disabled={isSpeakingAI}
+                      className="btn btn-outline btn-sm text-[11px] py-1 px-3 flex items-center gap-1.5 font-bold disabled:opacity-50"
+                    >
+                      <Volume2 size={13} className={isSpeakingAI ? "animate-pulse text-orange-500" : ""} />
+                      <span>{isSpeakingAI ? "Speaking..." : "Replay Audio"}</span>
+                    </button>
+                  </div>
+
+                  <h3 className="text-sm sm:text-base font-extrabold text-[#0F172A] leading-relaxed m-0">
+                    "{currentQuestion}"
+                  </h3>
+                </div>
+
+                {/* Rubric evaluation expectation hint */}
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-600 space-y-1">
+                  <div className="flex items-center gap-1 font-bold text-slate-700">
+                    <Sparkles size={12} className="text-orange-500" />
+                    <span>Evaluation Rubric Criteria:</span>
+                  </div>
+                  <p className="m-0 leading-normal text-slate-500">
+                    Explain core mechanics, memory lifecycle, runtime trade-offs, and practical edge cases clearly.
+                  </p>
+                </div>
+              </div>
+
+              {/* SUB-SEGMENT 3B: Live Voice Answer Transcript & Response Controls */}
+              <div className="card p-5 bg-white border border-[#E2E8F0] shadow-sm rounded-2xl flex flex-col justify-between space-y-3">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-100 shrink-0">
                   <div className="flex items-center gap-2">
                     <div
@@ -1069,7 +1087,7 @@ export function VoiceInterviewRoom({
                     <button
                       type="button"
                       onClick={() => setTextModeOnly(!textModeOnly)}
-                      className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 border border-slate-200 px-2 py-0.5 rounded-lg hover:bg-slate-50"
+                      className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 border border-slate-200 px-2.5 py-0.5 rounded-lg hover:bg-slate-50 transition-colors"
                     >
                       <Keyboard size={12} />
                       <span>{textModeOnly ? "Voice Mode" : "Switch to Typing"}</span>
@@ -1081,7 +1099,7 @@ export function VoiceInterviewRoom({
                 </div>
 
                 {/* Internal Scrollable Content Box */}
-                <div className="flex-1 min-h-[90px] max-h-[160px] overflow-y-auto bg-slate-50 rounded-xl p-3 border border-slate-200 focus-within:border-orange-500 transition-colors">
+                <div className="flex-1 min-h-[90px] max-h-[140px] overflow-y-auto bg-slate-50 rounded-xl p-3 border border-slate-200 focus-within:border-orange-500 transition-colors">
                   {textModeOnly ? (
                     <textarea
                       value={studentAnswer}
