@@ -31,9 +31,12 @@ interface StudentWebcamFeedProps {
   onStreamReady?: (stream: MediaStream) => void;
   onDetectionUpdate?: (result: ProctoringDetectionResult) => void;
   onCameraStatusChange?: (active: boolean) => void;
+  isMuted?: boolean;
+  onToggleMute?: () => void;
   showControls?: boolean;
   className?: string;
   compact?: boolean;
+  minimalMode?: boolean;
 }
 
 export function StudentWebcamFeed({
@@ -41,9 +44,12 @@ export function StudentWebcamFeed({
   onStreamReady,
   onDetectionUpdate,
   onCameraStatusChange,
+  isMuted,
+  onToggleMute,
   showControls = true,
   className = "",
   compact = false,
+  minimalMode = false,
 }: StudentWebcamFeedProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -467,6 +473,17 @@ export function StudentWebcamFeed({
     };
   }, [cameraActive, processFrame]);
 
+  // Sync external isMuted prop if provided
+  useEffect(() => {
+    if (isMuted !== undefined && streamRef.current) {
+      const videoTrack = streamRef.current.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = !isMuted;
+        setIsMutedVideo(isMuted);
+      }
+    }
+  }, [isMuted]);
+
   // Toggle Video Mute (Privacy)
   const toggleVideoMute = () => {
     if (!streamRef.current) return;
@@ -481,58 +498,60 @@ export function StudentWebcamFeed({
     <div
       className={`relative rounded-2xl overflow-hidden bg-[#0A0F1D] border border-slate-800 shadow-2xl flex flex-col ${className}`}
     >
-      {/* Top Telemetry & Proctoring Status */}
-      <div className="absolute top-0 inset-x-0 z-20 p-2.5 bg-gradient-to-b from-[#0A0F1D]/90 via-[#0A0F1D]/40 to-transparent flex items-center justify-between pointer-events-none">
-        <div className="flex items-center gap-2">
-          <span
-            className={`w-2.5 h-2.5 rounded-full ${
-              cameraActive && faceDetected && !cameraCovered
-                ? "bg-emerald-500 animate-pulse"
-                : "bg-amber-500"
-            }`}
-          />
-          <div className="flex flex-col">
-            <span className="text-xs font-bold text-white leading-tight">Candidate Camera (You)</span>
-            <span className="text-[10px] text-slate-400 font-mono">
-              {cameraActive
-                ? faceDetected
-                  ? `AI Face Lock • Live (${fpsDisplay} FPS)`
-                  : "Calibrating • Keep Centered"
-                : "Initializing..."}
-            </span>
+      {/* Top Telemetry & Proctoring Status (Standard mode only) */}
+      {!minimalMode && (
+        <div className="absolute top-0 inset-x-0 z-20 p-2.5 bg-gradient-to-b from-[#0A0F1D]/90 via-[#0A0F1D]/40 to-transparent flex items-center justify-between pointer-events-none">
+          <div className="flex items-center gap-2">
+            <span
+              className={`w-2.5 h-2.5 rounded-full ${
+                cameraActive && faceDetected && !cameraCovered
+                  ? "bg-emerald-500 animate-pulse"
+                  : "bg-amber-500"
+              }`}
+            />
+            <div className="flex flex-col">
+              <span className="text-xs font-bold text-white leading-tight">Candidate Camera (You)</span>
+              <span className="text-[10px] text-slate-400 font-mono">
+                {cameraActive
+                  ? faceDetected
+                    ? `AI Face Lock • Live (${fpsDisplay} FPS)`
+                    : "Calibrating • Keep Centered"
+                  : "Initializing..."}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            {gazeAway && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30 flex items-center gap-1">
+                <Eye size={11} />
+                <span>Gaze Away</span>
+              </span>
+            )}
+
+            {multipleFaces && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30 flex items-center gap-1">
+                <AlertTriangle size={11} />
+                <span>Multiple Faces</span>
+              </span>
+            )}
+
+            {cameraCovered && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30 flex items-center gap-1">
+                <ShieldAlert size={11} />
+                <span>Obstructed</span>
+              </span>
+            )}
+
+            {cameraActive && faceDetected && !cameraCovered && !gazeAway && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                <CheckCircle2 size={11} />
+                <span>Verified Feed</span>
+              </span>
+            )}
           </div>
         </div>
-
-        <div className="flex items-center gap-1.5">
-          {gazeAway && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30 flex items-center gap-1">
-              <Eye size={11} />
-              <span>Gaze Away</span>
-            </span>
-          )}
-
-          {multipleFaces && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30 flex items-center gap-1">
-              <AlertTriangle size={11} />
-              <span>Multiple Faces</span>
-            </span>
-          )}
-
-          {cameraCovered && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30 flex items-center gap-1">
-              <ShieldAlert size={11} />
-              <span>Obstructed</span>
-            </span>
-          )}
-
-          {cameraActive && faceDetected && !cameraCovered && !gazeAway && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-              <CheckCircle2 size={11} />
-              <span>Verified Feed</span>
-            </span>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Main Video Viewport */}
       <div
@@ -550,11 +569,22 @@ export function StudentWebcamFeed({
           }`}
         />
 
+        {/* Minimal Mode Bottom-Left Candidate Pill */}
+        {minimalMode && (
+          <div className="absolute bottom-3 left-3 z-20 flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0B0F19]/80 backdrop-blur-md border border-slate-700/60 text-white text-xs font-semibold shadow-lg pointer-events-none">
+            <svg className="w-3.5 h-3.5 text-cyan-400 shrink-0" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+            </svg>
+            <span>Candidate</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
+          </div>
+        )}
+
         {/* Offscreen frame analysis canvas */}
         <canvas ref={canvasRef} className="hidden" />
 
-        {/* Face Tracking Bounding Box Overlay */}
-        {cameraActive && !isMutedVideo && (
+        {/* Face Tracking Bounding Box Overlay (Standard Mode Only) */}
+        {cameraActive && !isMutedVideo && !minimalMode && (
           <div className="absolute inset-6 sm:inset-8 pointer-events-none border-2 border-emerald-400/35 rounded-2xl">
             <div className="absolute -top-3 left-4 bg-emerald-950/80 border border-emerald-500 text-emerald-300 px-2 py-0.5 rounded text-[10px] font-mono font-bold flex items-center gap-1">
               <Activity size={10} className="animate-spin text-emerald-400" />
@@ -608,7 +638,7 @@ export function StudentWebcamFeed({
       </div>
 
       {/* Bottom Camera Toolbar & Device Selector */}
-      {showControls && (
+      {showControls && !minimalMode && (
         <div className="p-2 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-xs">
           <div className="flex-1 mr-2">
             <select

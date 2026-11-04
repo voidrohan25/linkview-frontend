@@ -142,14 +142,12 @@ export default function StudentInterviewByIdPage({
           </div>
         </AppShell>
       ) : (
-        <AppShell role="student">
-          <Suspense fallback={<div className="p-12 text-center text-xs text-slate-400">Loading Interview Room...</div>}>
-            <VoiceInterviewRoom
-              initialSessionId={sessionId}
-              defaultTrack={interview?.technology || "Python"}
-            />
-          </Suspense>
-        </AppShell>
+        <Suspense fallback={<div className="min-h-screen bg-[#0B0F19] flex items-center justify-center text-xs text-slate-400">Loading Interview Room...</div>}>
+          <VoiceInterviewRoom
+            initialSessionId={sessionId}
+            defaultTrack={interview?.technology || "Python"}
+          />
+        </Suspense>
       )}
     </ProtectedRoute>
   );

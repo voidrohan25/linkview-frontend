@@ -20,6 +20,10 @@ import {
   Play,
   Keyboard,
   Video,
+  VideoOff,
+  Settings,
+  HelpCircle,
+  BarChart2,
   PhoneOff,
   AlertTriangle,
   ArrowRight,
@@ -57,8 +61,11 @@ export function VoiceInterviewRoom({
 
   // Call & Timer state
   const [timerSeconds, setTimerSeconds] = useState<number>(0);
+  const [thinkTime, setThinkTime] = useState<number>(45);
   const [interviewStarted, setInterviewStarted] = useState<boolean>(false);
   const [confirmEndOpen, setConfirmEndOpen] = useState<boolean>(false);
+  const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
+  const [isCameraMuted, setIsCameraMuted] = useState<boolean>(false);
 
   // Session state
   const [sessionId, setSessionId] = useState<string | null>(initialSessionId || null);
@@ -134,6 +141,22 @@ export function VoiceInterviewRoom({
     }, 1000);
     return () => clearInterval(interval);
   }, [interviewStarted, completed]);
+
+  // Think Time countdown interval (resets to 45s on each turn)
+  useEffect(() => {
+    if (!interviewStarted || completed) return;
+    setThinkTime(45);
+    const interval = setInterval(() => {
+      setThinkTime((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [currentTurn, interviewStarted, completed]);
+
+  const formatThinkTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
 
   // Central Authoritative Proctoring Flag Reporter (Calls Backend /api/proctoring)
   const reportProctoringFlag = useCallback(
@@ -938,59 +961,54 @@ export function VoiceInterviewRoom({
           </div>
         </div>
       ) : (
-        /* 4. SINGLE-FRAME COMMERCIAL INTERVIEW ROOM (PART 5 - NO PAGE SCROLLING REQUIRED) */
-        <div className="flex flex-col h-[calc(100vh-5.5rem)] min-h-[640px] max-h-[880px] overflow-hidden space-y-3">
-          {/* Top Status & Telemetry Bar */}
-          <div className="p-2.5 sm:p-3 rounded-2xl bg-white border border-[#E2E8F0] shadow-sm flex flex-wrap items-center justify-between gap-2 shrink-0">
+        /* 4. EXACT REFERENCE AI MOCK INTERVIEW ROOM (PIXEL-PERFECT MATCH TO REFERENCE IMAGE) */
+        <div className="w-full min-h-screen bg-[#0B0F19] text-white flex flex-col select-none">
+          {/* Top Header Bar */}
+          <header className="h-16 border-b border-slate-800/80 bg-[#0B0F19] px-4 sm:px-8 flex items-center justify-between shrink-0">
+            {/* Left: Brand & Product Identity */}
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-slate-900 text-white font-mono text-xs font-bold shadow-sm">
-                <Clock size={13} className="text-orange-400" />
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-extrabold text-sm shadow-md tracking-wider">
+                Ai
+              </div>
+              <div className="flex items-center gap-2.5">
+                <span className="text-white font-extrabold text-base tracking-tight">NoProxy</span>
+                <span className="text-slate-600 font-light">|</span>
+                <span className="text-slate-300 font-medium text-xs sm:text-sm">AI Mock Interview</span>
+              </div>
+            </div>
+
+            {/* Right: Live Status, Clock & End Call Action */}
+            <div className="flex items-center gap-3 sm:gap-5">
+              {/* Live Status indicator */}
+              <div className="flex items-center gap-2 text-xs text-slate-300 font-medium">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                <span className="hidden sm:inline">Interview in Progress</span>
+              </div>
+
+              {/* Call Timer (HH:MM:SS) */}
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 text-slate-200 font-mono text-xs font-semibold">
+                <Clock size={13} className="text-slate-400" />
                 <span>{formatTimer(timerSeconds)}</span>
               </div>
 
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                <span className="px-2 py-0.5 rounded bg-orange-100 text-orange-800 text-[11px]">
-                  Turn {currentTurn} of {totalTurns}
-                </span>
-                <span className="text-slate-400">•</span>
-                <span>{track} Track</span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {/* Flag Counter Indicator (Rule 4.3) */}
-              <div
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
-                  flagCount === 0
-                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                    : flagCount <= 2
-                    ? "bg-amber-50 text-amber-700 border-amber-300"
-                    : "bg-red-50 text-red-700 border-red-300 animate-pulse"
-                }`}
-              >
-                <ShieldCheck size={13} />
-                <span>
-                  Proctoring Flags: {flagCount} / {maxAllowedFlags} Allowed
-                </span>
-              </div>
-
+              {/* End Interview Pill Button */}
               <button
                 type="button"
                 onClick={() => setConfirmEndOpen(true)}
-                className="btn btn-outline btn-sm text-xs py-1 px-3 text-red-600 border-red-200 hover:bg-red-50 font-bold"
+                className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl border border-red-500/80 hover:border-red-400 text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors text-xs font-semibold"
               >
                 <PhoneOff size={13} />
-                <span>End Call</span>
+                <span>End Interview</span>
               </button>
             </div>
-          </div>
+          </header>
 
-          {/* MAIN STAGE: 3-SEGMENT BALANCED STAGE */}
-          <div className="flex flex-col space-y-4 flex-1 min-h-0">
-            {/* SEGMENTS 1 & 2: DUAL 16:9 VIDEO FEEDS (AI Interviewer & Candidate Webcam) */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
-              {/* SEGMENT 1: AI Lead Interviewer Feed */}
-              <div className="w-full flex flex-col">
+          {/* Main 2-Column Grid Stage */}
+          <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1700px] w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* LEFT COLUMN (~65% width: AI Avatar, Question, Bottom Controls) */}
+            <div className="lg:col-span-7 xl:col-span-8 flex flex-col space-y-4">
+              {/* AI Lead Interviewer Video Frame */}
+              <div className="relative w-full rounded-2xl overflow-hidden border border-slate-800/80 bg-[#131B2E] shadow-2xl">
                 <AIAvatar
                   isSpeaking={isSpeakingAI}
                   isListening={isListening}
@@ -1001,172 +1019,264 @@ export function VoiceInterviewRoom({
                   audioLevel={micAudioLevel}
                   selectedPersona={selectedPersona}
                   onPersonaChange={(id) => setSelectedPersona(id)}
-                  compact={true}
-                  className="h-full"
+                  minimalMode={true}
+                  className="w-full"
                 />
               </div>
 
-              {/* SEGMENT 2: Candidate Live Camera & Proctoring Feed */}
-              <div className="w-full flex flex-col">
-                <StudentWebcamFeed
-                  externalStream={sharedStream}
-                  onStreamReady={(stream) => setSharedStream(stream)}
-                  onDetectionUpdate={handleDetectionUpdate}
-                  onCameraStatusChange={(active) => setCameraActive(active)}
-                  compact={true}
-                  className="h-full shadow-md"
-                />
+              {/* Current Question Card */}
+              <div className="rounded-2xl border border-slate-800/80 bg-[#131B2E] p-5 shadow-xl flex flex-col space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-indigo-400 font-bold">
+                      <HelpCircle size={15} />
+                    </div>
+                    <span className="text-white font-bold text-sm">Current Question</span>
+                  </div>
+
+                  {/* Think Time Countdown Pill */}
+                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900/90 border border-slate-700/60 text-slate-300 text-xs font-mono">
+                    <Clock size={12} className="text-slate-400" />
+                    <span>Think Time: {formatThinkTime(thinkTime)}</span>
+                  </div>
+                </div>
+
+                {/* High Contrast Question Statement */}
+                <p className="text-white text-base sm:text-lg font-medium leading-relaxed m-0 pt-1">
+                  "{currentQuestion}"
+                </p>
+              </div>
+
+              {/* Bottom Controls Row: [Mute] [Video Off] [Settings] */}
+              <div className="flex items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={toggleListening}
+                  className={`px-4 py-2.5 rounded-xl border text-xs font-semibold flex items-center gap-2 transition-all ${
+                    isListening
+                      ? "bg-[#131B2E] border-slate-700/80 text-white hover:bg-slate-800"
+                      : "bg-red-500/20 border-red-500/60 text-red-300 hover:bg-red-500/30"
+                  }`}
+                >
+                  {isListening ? (
+                    <Mic size={14} className="text-slate-300" />
+                  ) : (
+                    <MicOff size={14} className="text-red-400" />
+                  )}
+                  <span>{isListening ? "Mute" : "Unmute"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsCameraMuted((prev) => !prev)}
+                  className={`px-4 py-2.5 rounded-xl border text-xs font-semibold flex items-center gap-2 transition-all ${
+                    !isCameraMuted
+                      ? "bg-[#131B2E] border-slate-700/80 text-white hover:bg-slate-800"
+                      : "bg-red-500/20 border-red-500/60 text-red-300 hover:bg-red-500/30"
+                  }`}
+                >
+                  {isCameraMuted ? (
+                    <VideoOff size={14} className="text-red-400" />
+                  ) : (
+                    <Video size={14} className="text-slate-300" />
+                  )}
+                  <span>{isCameraMuted ? "Video On" : "Video Off"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSettingsOpen(true)}
+                  className="px-4 py-2.5 rounded-xl bg-[#131B2E] border border-slate-700/80 text-white hover:bg-slate-800 text-xs font-semibold flex items-center gap-2 transition-all"
+                >
+                  <Settings size={14} className="text-slate-300" />
+                  <span>Settings</span>
+                </button>
               </div>
             </div>
 
-            {/* SEGMENT 3: INTERACTIVE DIALOGUE & RESPONSE CONSOLE */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch flex-1 min-h-0">
-              {/* SUB-SEGMENT 3A: AI Question Prompter Card */}
-              <div className="card p-5 bg-white border border-[#E2E8F0] shadow-sm rounded-2xl flex flex-col justify-between space-y-3">
-                <div className="space-y-2.5">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-800 border border-orange-200 uppercase tracking-wider">
-                        Question {currentTurn} of {totalTurns}
-                      </span>
-                      <span className="text-[11px] font-semibold text-slate-500">
-                        • {track} Technical Viva
-                      </span>
-                    </div>
+            {/* RIGHT COLUMN (~35% width: Candidate Camera, Details, Response) */}
+            <div className="lg:col-span-5 xl:col-span-4 flex flex-col space-y-4">
+              {/* Candidate Live Camera Feed */}
+              <StudentWebcamFeed
+                externalStream={sharedStream}
+                onStreamReady={(stream) => setSharedStream(stream)}
+                onDetectionUpdate={handleDetectionUpdate}
+                onCameraStatusChange={(active) => setCameraActive(active)}
+                isMuted={isCameraMuted}
+                minimalMode={true}
+                compact={true}
+                className="w-full shadow-2xl"
+              />
 
-                    <button
-                      type="button"
-                      onClick={() => speakQuestion(currentQuestion)}
-                      disabled={isSpeakingAI}
-                      className="btn btn-outline btn-sm text-[11px] py-1 px-3 flex items-center gap-1.5 font-bold disabled:opacity-50"
-                    >
-                      <Volume2 size={13} className={isSpeakingAI ? "animate-pulse text-orange-500" : ""} />
-                      <span>{isSpeakingAI ? "Speaking..." : "Replay Audio"}</span>
-                    </button>
-                  </div>
-
-                  <h3 className="text-sm sm:text-base font-extrabold text-[#0F172A] leading-relaxed m-0">
-                    "{currentQuestion}"
-                  </h3>
+              {/* Interview Details Card */}
+              <div className="rounded-2xl border border-slate-800/80 bg-[#131B2E] p-4 sm:p-5 shadow-xl space-y-3">
+                <div className="flex items-center gap-2 text-white font-bold text-sm pb-1 border-b border-slate-800/60">
+                  <BarChart2 size={16} className="text-cyan-400" />
+                  <span>Interview Details</span>
                 </div>
 
-                {/* Rubric evaluation expectation hint */}
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-600 space-y-1">
-                  <div className="flex items-center gap-1 font-bold text-slate-700">
-                    <Sparkles size={12} className="text-orange-500" />
-                    <span>Evaluation Rubric Criteria:</span>
+                <div className="space-y-2.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 font-medium">Role:</span>
+                    <span className="text-white font-semibold">
+                      {track.toLowerCase().includes("developer") || track.toLowerCase().includes("engineer")
+                        ? track
+                        : `${track} Developer`}
+                    </span>
                   </div>
-                  <p className="m-0 leading-normal text-slate-500">
-                    Explain core mechanics, memory lifecycle, runtime trade-offs, and practical edge cases clearly.
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 font-medium">Experience:</span>
+                    <span className="text-white font-semibold">
+                      {difficulty === "senior"
+                        ? "5+ Yrs Experience"
+                        : difficulty === "intermediate"
+                        ? "1-3 Yrs Experience"
+                        : "Fresher"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 font-medium">Round:</span>
+                    <span className="text-white font-semibold">Technical Interview</span>
+                  </div>
                 </div>
               </div>
 
-              {/* SUB-SEGMENT 3B: Live Voice Answer Transcript & Response Controls */}
-              <div className="card p-5 bg-white border border-[#E2E8F0] shadow-sm rounded-2xl flex flex-col justify-between space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100 shrink-0">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={`p-1.5 rounded-lg ${
-                        isListening
-                          ? "bg-emerald-100 text-emerald-700 animate-pulse"
-                          : "bg-slate-100 text-slate-600"
-                      }`}
-                    >
-                      <Mic size={15} />
-                    </div>
-                    <div>
-                      <span className="text-xs font-bold text-slate-800 block">Voice Answer Transcript</span>
-                      <span className="text-[10px] text-slate-400">
-                        {isListening ? "Listening continuously in real time..." : "Microphone paused"}
-                      </span>
-                    </div>
+              {/* Your Response Card with Red Outlined Recording Equalizer */}
+              <div className="rounded-2xl border border-slate-800/80 bg-[#131B2E] p-4 sm:p-5 shadow-xl space-y-3">
+                <div className="flex items-center justify-between pb-1 border-b border-slate-800/60">
+                  <div className="flex items-center gap-2 text-white font-bold text-sm">
+                    <Mic size={16} className="text-cyan-400" />
+                    <span>Your Response</span>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setTextModeOnly(!textModeOnly)}
-                      className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 border border-slate-200 px-2.5 py-0.5 rounded-lg hover:bg-slate-50 transition-colors"
-                    >
-                      <Keyboard size={12} />
-                      <span>{textModeOnly ? "Voice Mode" : "Switch to Typing"}</span>
-                    </button>
-                    <span className="text-[10px] font-mono text-slate-400">
-                      {studentAnswer.split(" ").filter(Boolean).length} words
-                    </span>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTextModeOnly(!textModeOnly)}
+                    className="text-[11px] text-slate-400 hover:text-slate-200 transition-colors"
+                  >
+                    {textModeOnly ? "Switch to Voice" : "Switch to Text"}
+                  </button>
                 </div>
 
-                {/* Internal Scrollable Content Box */}
-                <div className="flex-1 min-h-[90px] max-h-[140px] overflow-y-auto bg-slate-50 rounded-xl p-3 border border-slate-200 focus-within:border-orange-500 transition-colors">
+                {/* Exact Red Outlined Recording Container */}
+                {!textModeOnly ? (
+                  <div
+                    className={`w-full py-3.5 px-4 rounded-xl border flex items-center justify-center gap-3 transition-all ${
+                      isListening
+                        ? "border-red-500/80 bg-red-950/20 shadow-[0_0_20px_rgba(239,68,68,0.2)]"
+                        : "border-slate-700 bg-slate-900/40 text-slate-400"
+                    }`}
+                  >
+                    {isListening ? (
+                      <>
+                        {/* Animated Equalizer Wave Bars */}
+                        <div className="flex items-center gap-1 h-5">
+                          <span className="w-1 bg-red-500 rounded-full animate-bounce [animation-delay:-0.35s] h-3" />
+                          <span className="w-1 bg-red-500 rounded-full animate-bounce [animation-delay:-0.15s] h-5" />
+                          <span className="w-1 bg-red-500 rounded-full animate-bounce [animation-delay:-0.45s] h-4" />
+                          <span className="w-1 bg-red-500 rounded-full animate-bounce [animation-delay:-0.2s] h-2" />
+                          <span className="w-1 bg-red-500 rounded-full animate-bounce [animation-delay:-0.1s] h-4" />
+                        </div>
+                        <span className="text-red-400 font-bold text-xs tracking-wide">Recording...</span>
+                      </>
+                    ) : (
+                      <span className="text-xs text-slate-400">Microphone Paused (Click Unmute to Resume)</span>
+                    )}
+                  </div>
+                ) : null}
+
+                {/* Real-time Answer Transcript or Textarea */}
+                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-xs min-h-[75px] max-h-[110px] overflow-y-auto">
                   {textModeOnly ? (
                     <textarea
                       value={studentAnswer}
                       onChange={(e) => setStudentAnswer(e.target.value)}
                       placeholder="Type your technical response here..."
-                      className="w-full h-full bg-transparent resize-none text-xs text-slate-800 focus:outline-none"
+                      className="w-full h-full bg-transparent resize-none text-slate-200 focus:outline-none"
                     />
+                  ) : studentAnswer || interimText ? (
+                    <p className="text-slate-200 leading-relaxed m-0 font-sans">
+                      {studentAnswer} {interimText && <span className="text-slate-400 italic">{interimText}</span>}
+                    </p>
                   ) : (
-                    <div className="text-xs text-slate-800 leading-relaxed font-sans">
-                      {studentAnswer ? (
-                        <span>
-                          {studentAnswer}{" "}
-                          {interimText && <span className="text-slate-400 italic">{interimText}</span>}
-                        </span>
-                      ) : interimText ? (
-                        <span className="text-slate-400 italic">{interimText}</span>
-                      ) : (
-                        <span className="text-slate-400 italic">
-                          Speak naturally into your microphone. Your speech will stream here in real time...
-                        </span>
-                      )}
-                    </div>
+                    <p className="text-slate-500 italic m-0">
+                      Speak into your microphone. Your response streams here in real time...
+                    </p>
                   )}
                 </div>
 
-                {/* Action Controls Footer */}
-                <div className="flex items-center justify-between pt-1 shrink-0">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={toggleListening}
-                      className={`btn btn-sm text-xs py-1.5 px-3 font-bold flex items-center gap-1.5 ${
-                        isListening
-                          ? "bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-200"
-                          : "bg-emerald-600 text-white hover:bg-emerald-700"
-                      }`}
-                    >
-                      {isListening ? <MicOff size={13} /> : <Mic size={13} />}
-                      <span>{isListening ? "Pause Mic" : "Resume Mic"}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStudentAnswer("");
-                        setInterimText("");
-                      }}
-                      className="text-xs font-semibold text-slate-400 hover:text-slate-700 px-2 py-1 flex items-center gap-1"
-                    >
-                      <RotateCcw size={12} />
-                      <span>Clear</span>
-                    </button>
-                  </div>
+                {/* Response Action Row */}
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStudentAnswer("");
+                      setInterimText("");
+                    }}
+                    disabled={!studentAnswer && !interimText}
+                    className="text-xs text-slate-400 hover:text-slate-200 disabled:opacity-30 transition-colors flex items-center gap-1"
+                  >
+                    <RotateCcw size={12} />
+                    <span>Clear</span>
+                  </button>
 
                   <button
                     type="button"
                     onClick={handleSubmitAnswer}
                     disabled={isSubmitting || (!studentAnswer.trim() && !interimText.trim())}
-                    className="btn btn-primary text-xs py-2 px-5 font-bold shadow-md flex items-center gap-1.5 disabled:opacity-50"
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs shadow-lg transition-all flex items-center gap-1.5 disabled:opacity-40"
                   >
-                    <span>{isSubmitting ? "Evaluating..." : `Submit Turn ${currentTurn}`}</span>
-                    <Send size={13} />
+                    <span>{isSubmitting ? "Evaluating Turn..." : `Submit Turn ${currentTurn} of ${totalTurns}`}</span>
+                    <Send size={12} />
                   </button>
                 </div>
               </div>
             </div>
-          </div>
+          </main>
+
+          {/* Quick Settings Modal */}
+          {settingsOpen && (
+            <div className="modal-overlay">
+              <div className="modal-content max-w-md p-6 bg-[#131B2E] border border-slate-700 text-white rounded-2xl shadow-2xl space-y-4 animate-in zoom-in-95">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <Settings size={18} className="text-cyan-400" />
+                    <h3 className="text-base font-bold text-white m-0">Audio & Device Settings</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSettingsOpen(false)}
+                    className="text-slate-400 hover:text-white text-sm font-bold"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="space-y-4 text-xs">
+                  <AudioDeviceSelector onLevelChange={(lvl: number) => setMicAudioLevel(lvl)} />
+
+                  <div className="pt-2 flex justify-between items-center">
+                    <button
+                      type="button"
+                      onClick={testSpeaker}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold flex items-center gap-1.5"
+                    >
+                      <Volume2 size={13} />
+                      <span>Test Speakers</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSettingsOpen(false)}
+                      className="px-4 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white font-bold"
+                    >
+                      Save & Done
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
