@@ -47,6 +47,8 @@ export function VoiceInterviewRoom({
   const [preflightOpen, setPreflightOpen] = useState(true);
   const [audioOutputTested, setAudioOutputTested] = useState(false);
   const [micAudioLevel, setMicAudioLevel] = useState(0);
+  const [selectedMicDeviceId, setSelectedMicDeviceId] = useState<string>("");
+  const [selectedMicLabel, setSelectedMicLabel] = useState<string>("");
   const [cameraActive, setCameraActive] = useState(false);
   const [sharedStream, setSharedStream] = useState<MediaStream | null>(null);
   const [proctoringConsent, setProctoringConsent] = useState(true);
@@ -860,7 +862,23 @@ export function VoiceInterviewRoom({
                   <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
                     Microphone Input Test:
                   </label>
-                  <AudioDeviceSelector onLevelChange={(lvl: number) => setMicAudioLevel(lvl)} />
+                  <AudioDeviceSelector
+                    initialDeviceId={selectedMicDeviceId}
+                    onDeviceSelect={(id, label) => {
+                      setSelectedMicDeviceId(id);
+                      setSelectedMicLabel(label);
+                    }}
+                    onLevelChange={(lvl: number) => setMicAudioLevel(lvl)}
+                  />
+
+                  {selectedMicLabel && (
+                    <div className="p-2 rounded-lg bg-slate-950/70 border border-slate-800 text-[11px] text-slate-300 flex items-center justify-between">
+                      <span className="text-slate-400">Connected:</span>
+                      <span className="font-semibold text-cyan-300 truncate max-w-[270px]">
+                        {selectedMicLabel}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
@@ -1394,7 +1412,23 @@ export function VoiceInterviewRoom({
                 </div>
 
                 <div className="space-y-4 text-xs">
-                  <AudioDeviceSelector onLevelChange={(lvl: number) => setMicAudioLevel(lvl)} />
+                  <AudioDeviceSelector
+                    initialDeviceId={selectedMicDeviceId}
+                    onDeviceSelect={(id, label) => {
+                      setSelectedMicDeviceId(id);
+                      setSelectedMicLabel(label);
+                    }}
+                    onLevelChange={(lvl: number) => setMicAudioLevel(lvl)}
+                  />
+
+                  {selectedMicLabel && (
+                    <div className="p-2 rounded-lg bg-slate-950/70 border border-slate-800 text-[11px] text-slate-300 flex items-center justify-between">
+                      <span className="text-slate-400">Connected:</span>
+                      <span className="font-semibold text-cyan-300 truncate max-w-[270px]">
+                        {selectedMicLabel}
+                      </span>
+                    </div>
+                  )}
 
                   <div className="pt-2 flex justify-between items-center">
                     <button
