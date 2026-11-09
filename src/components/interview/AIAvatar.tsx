@@ -102,13 +102,13 @@ export function AIAvatar({
           />
 
           {/* Exact Reference Pill: [ 🤖 AI Interviewer ● ] in bottom-left */}
-          <div className="absolute bottom-4 left-4 z-20 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#0B0F19]/80 backdrop-blur-md border border-slate-700/60 text-white text-xs font-semibold shadow-xl pointer-events-none">
-            <Bot size={15} className="text-cyan-400" />
+          <div className="absolute bottom-3.5 left-3.5 z-20 flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0B0F19]/80 backdrop-blur-md border border-slate-700/60 text-white text-xs font-semibold shadow-lg pointer-events-none">
+            <span className="text-sm">🤖</span>
             <span>AI Interviewer</span>
             <span
-              className={`w-2 h-2 rounded-full ${
+              className={`w-1.5 h-1.5 rounded-full ${
                 isSpeaking
-                  ? "bg-orange-400 animate-ping"
+                  ? "bg-amber-400 animate-ping"
                   : isListening
                   ? "bg-emerald-400 animate-pulse"
                   : "bg-emerald-400"

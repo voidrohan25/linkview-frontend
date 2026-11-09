@@ -83,6 +83,7 @@ export function VoiceInterviewRoom({
       setSessionId(sid);
       setPreflightOpen(false);
       setInterviewStarted(true);
+      setupActiveMicStream(selectedMicDeviceId);
       fetch(`/api/interviews?id=${sid}`)
         .then((res) => res.json())
         .then((data) => {
@@ -126,6 +127,21 @@ export function VoiceInterviewRoom({
   } | null>(null);
   const [autoSubmittedByProctoring, setAutoSubmittedByProctoring] = useState<boolean>(false);
 
+  // Real Hardware Audio Streaming & MediaRecorder for External USB Microphones
+  const activeMicStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const micAnimFrameRef = useRef<number | null>(null);
+
+  const [liveMicLevel, setLiveMicLevel] = useState<number>(0);
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
+  const [recordedDuration, setRecordedDuration] = useState<number>(0);
+  const [hasRecordedAudio, setHasRecordedAudio] = useState<boolean>(false);
+  const [isPlayingRecordedAudio, setIsPlayingRecordedAudio] = useState<boolean>(false);
+  const recordedAudioPlayerRef = useRef<HTMLAudioElement | null>(null);
+
   // Speech Recognition & Audio refs
   const recognitionRef = useRef<any>(null);
   const shouldListenRef = useRef<boolean>(false);
@@ -133,6 +149,186 @@ export function VoiceInterviewRoom({
   const restartTimerRef = useRef<NodeJS.Timeout | null>(null);
   const blurStartTimeRef = useRef<number | null>(null);
   const lastRecordedFlagTimeRef = useRef<number>(0);
+
+  // Hardware Audio Pipeline: Binds directly to selected USB / external microphone
+  const setupActiveMicStream = useCallback(async (deviceId?: string) => {
+    if (micAnimFrameRef.current) {
+      cancelAnimationFrame(micAnimFrameRef.current);
+      micAnimFrameRef.current = null;
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    if (activeMicStreamRef.current) {
+      activeMicStreamRef.current.getTracks().forEach((t) => t.stop());
+      activeMicStreamRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {}
+    }
+
+    try {
+      let stream: MediaStream | null = null;
+      if (deviceId) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              deviceId: { exact: deviceId },
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          });
+        } catch {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                deviceId: { ideal: deviceId },
+                echoCancellation: true,
+              },
+            });
+          } catch {
+            stream = null;
+          }
+        }
+      }
+
+      if (!stream) {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
+        });
+      }
+
+      activeMicStreamRef.current = stream;
+
+      const track = stream.getAudioTracks()[0];
+      if (track && track.label) {
+        setSelectedMicLabel(track.label);
+      }
+
+      // Web Audio API real-time analyser for voice amplitude
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const audioCtx = new AudioCtx();
+        audioContextRef.current = audioCtx;
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.35;
+        analyserRef.current = analyser;
+
+        const source = audioCtx.createMediaStreamSource(stream);
+        source.connect(analyser);
+
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        const checkAudioLoop = () => {
+          if (!analyserRef.current) return;
+          analyserRef.current.getByteFrequencyData(dataArray);
+
+          let sum = 0;
+          for (let i = 0; i < bufferLength; i++) {
+            sum += dataArray[i];
+          }
+          const avg = sum / bufferLength;
+          const normalized = Math.min(100, Math.round((avg / 95) * 100));
+          setLiveMicLevel(normalized);
+
+          micAnimFrameRef.current = requestAnimationFrame(checkAudioLoop);
+        };
+
+        checkAudioLoop();
+      }
+
+      // Initialize MediaRecorder for real external USB microphone recording
+      if (typeof MediaRecorder !== "undefined") {
+        try {
+          audioChunksRef.current = [];
+          const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+            ? "audio/webm;codecs=opus"
+            : MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
+            ? "audio/ogg;codecs=opus"
+            : "";
+
+          const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+
+          recorder.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0) {
+              audioChunksRef.current.push(e.data);
+            }
+          };
+
+          recorder.onstop = () => {
+            if (audioChunksRef.current.length > 0) {
+              const audioBlob = new Blob(audioChunksRef.current, {
+                type: recorder.mimeType || "audio/webm",
+              });
+              const url = URL.createObjectURL(audioBlob);
+              setRecordedAudioUrl(url);
+              setHasRecordedAudio(true);
+            }
+          };
+
+          mediaRecorderRef.current = recorder;
+          if (recorder.state === "inactive") {
+            recorder.start(500);
+          }
+        } catch (recErr) {
+          console.warn("MediaRecorder init notice:", recErr);
+        }
+      }
+    } catch (err: any) {
+      console.warn("setupActiveMicStream failed:", err);
+    }
+  }, []);
+
+  const togglePlayRecordedAudio = () => {
+    if (!recordedAudioPlayerRef.current && recordedAudioUrl) {
+      const audio = new Audio(recordedAudioUrl);
+      recordedAudioPlayerRef.current = audio;
+      audio.onended = () => setIsPlayingRecordedAudio(false);
+    }
+
+    const player = recordedAudioPlayerRef.current;
+    if (!player) return;
+
+    if (isPlayingRecordedAudio) {
+      player.pause();
+      setIsPlayingRecordedAudio(false);
+    } else {
+      player
+        .play()
+        .then(() => {
+          setIsPlayingRecordedAudio(true);
+        })
+        .catch((e) => {
+          console.warn("Audio playback notice:", e);
+        });
+    }
+  };
+
+  // Continuous recording duration tracker for USB audio response
+  useEffect(() => {
+    if (!interviewStarted || completed || isSpeakingAI || isSubmitting || !isListening) return;
+    const recInterval = setInterval(() => {
+      setRecordedDuration((prev) => prev + 1);
+      setHasRecordedAudio(true);
+    }, 1000);
+    return () => clearInterval(recInterval);
+  }, [interviewStarted, completed, isSpeakingAI, isSubmitting, isListening]);
+
+  // Synchronize USB microphone stream when device selection changes during call
+  useEffect(() => {
+    if (interviewStarted && !completed) {
+      setupActiveMicStream(selectedMicDeviceId);
+    }
+  }, [selectedMicDeviceId, interviewStarted, completed, setupActiveMicStream]);
 
   // Timer interval
   useEffect(() => {
@@ -507,14 +703,34 @@ export function VoiceInterviewRoom({
   };
 
   const toggleListening = () => {
-    if (isListening) stopSpeechRecognition();
-    else startSpeechRecognition();
+    if (isListening) {
+      stopSpeechRecognition();
+      if (activeMicStreamRef.current) {
+        activeMicStreamRef.current.getAudioTracks().forEach((t) => (t.enabled = false));
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        try {
+          mediaRecorderRef.current.pause();
+        } catch {}
+      }
+    } else {
+      if (activeMicStreamRef.current) {
+        activeMicStreamRef.current.getAudioTracks().forEach((t) => (t.enabled = true));
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "paused") {
+        try {
+          mediaRecorderRef.current.resume();
+        } catch {}
+      }
+      startSpeechRecognition();
+    }
   };
 
   // Start Interview from Pre-flight modal
   const handleStartInterview = async () => {
     setPreflightOpen(false);
     setInterviewStarted(true);
+    setupActiveMicStream(selectedMicDeviceId);
 
     try {
       const res = await fetch("/api/interviews", {
@@ -542,9 +758,23 @@ export function VoiceInterviewRoom({
     }
   };
 
-  // Ensure camera hardware tracks cleanly shut down when candidate exits the room
+  // Ensure audio and webcam tracks cleanly shut down when candidate exits the room
   useEffect(() => {
     return () => {
+      if (micAnimFrameRef.current) {
+        cancelAnimationFrame(micAnimFrameRef.current);
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+        audioContextRef.current.close().catch(() => {});
+      }
+      if (activeMicStreamRef.current) {
+        activeMicStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        try {
+          mediaRecorderRef.current.stop();
+        } catch {}
+      }
       if (sharedStream) {
         sharedStream.getTracks().forEach((track) => track.stop());
       }
@@ -983,25 +1213,25 @@ export function VoiceInterviewRoom({
 
       {/* 3. COMPLETED SCORECARD OR AUTO-SUBMISSION RESULT VIEW */}
       {completed ? (
-        <div className="min-h-screen py-8 px-4 flex items-center justify-center">
-          <div className="card p-6 sm:p-8 bg-white border border-[#E2E8F0] shadow-2xl rounded-2xl space-y-6 max-w-4xl w-full">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-[#E2E8F0] gap-4">
+        <div className="min-h-screen py-8 px-4 flex items-center justify-center bg-[#0B0F19]">
+          <div className="card p-6 sm:p-8 bg-[#131B2E] border border-slate-800 shadow-2xl rounded-2xl space-y-6 max-w-4xl w-full text-white">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-800 gap-4">
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <span
                   className={`text-[10px] font-bold px-2 py-0.5 rounded ${
                     autoSubmittedByProctoring
-                      ? "bg-red-100 text-red-800 border border-red-300"
-                      : "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                      ? "bg-red-500/20 text-red-300 border border-red-500/40"
+                      : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
                   }`}
                 >
                   {autoSubmittedByProctoring
                     ? "AUTO-SUBMITTED (PROCTORING THRESHOLD)"
                     : "INTERVIEW CONCLUDED"}
                 </span>
-                <span className="text-xs text-slate-500">• Technical Evaluation Summary</span>
+                <span className="text-xs text-slate-400">• Technical Evaluation Summary</span>
               </div>
-              <h2 className="text-2xl font-extrabold text-[#0F172A] m-0">
+              <h2 className="text-2xl font-extrabold text-white m-0">
                 {autoSubmittedByProctoring
                   ? "Interview Automatically Submitted"
                   : `${track} Technical Evaluation Summary`}
@@ -1011,20 +1241,20 @@ export function VoiceInterviewRoom({
             <div className="flex items-center gap-3">
               <div className="text-right">
                 <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Overall Score</div>
-                <div className="text-3xl font-extrabold text-orange-600 font-mono leading-none">
+                <div className="text-3xl font-extrabold text-orange-400 font-mono leading-none">
                   {finalScorecard.overallScore || 50}%
                 </div>
               </div>
-              <div className="p-3 rounded-xl bg-orange-50 text-orange-600 border border-orange-200">
+              <div className="p-3 rounded-xl bg-orange-500/20 text-orange-400 border border-orange-500/30">
                 <Award size={28} />
               </div>
             </div>
           </div>
 
           {autoSubmittedByProctoring && (
-            <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-xs text-red-900 leading-relaxed space-y-1">
-              <p className="font-bold text-sm m-0">Proctoring Flag Limit Exceeded (4 Confirmed Flags)</p>
-              <p className="m-0 text-red-700">
+            <div className="p-4 rounded-xl bg-red-950/40 border border-red-500/40 text-xs text-red-200 leading-relaxed space-y-1">
+              <p className="font-bold text-sm m-0 text-red-300">Proctoring Flag Limit Exceeded (4 Confirmed Flags)</p>
+              <p className="m-0 text-red-300/80">
                 Your interview was automatically submitted by the system because the maximum allowable security flags were exceeded. The verbal answers recorded up to this point have been safely saved for faculty review.
               </p>
             </div>
@@ -1032,54 +1262,62 @@ export function VoiceInterviewRoom({
 
           {/* 4 Rubric Evaluation Dimension Bars */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+            <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                 Technical Accuracy
               </span>
-              <div className="text-2xl font-extrabold text-slate-900 font-mono">
+              <div className="text-2xl font-extrabold text-white font-mono">
                 {finalScorecard.technicalAccuracy || 55}%
               </div>
             </div>
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+            <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                 Conceptual Depth
               </span>
-              <div className="text-2xl font-extrabold text-slate-900 font-mono">
+              <div className="text-2xl font-extrabold text-white font-mono">
                 {finalScorecard.conceptualUnderstanding || 50}%
               </div>
             </div>
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+            <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                 Communication Fluency
               </span>
-              <div className="text-2xl font-extrabold text-slate-900 font-mono">
+              <div className="text-2xl font-extrabold text-white font-mono">
                 {finalScorecard.communication || 50}%
               </div>
             </div>
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+            <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                 Problem Solving
               </span>
-              <div className="text-2xl font-extrabold text-slate-900 font-mono">
+              <div className="text-2xl font-extrabold text-white font-mono">
                 {finalScorecard.problemSolving || 48}%
               </div>
             </div>
           </div>
 
+          {/* Qualitative AI Feedback */}
+          {finalScorecard.aiFeedback && (
+            <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 text-xs text-slate-300 leading-relaxed">
+              <span className="text-slate-400 font-bold uppercase tracking-wider block mb-1">AI Evaluator Feedback:</span>
+              <p className="m-0 text-slate-200">{finalScorecard.aiFeedback}</p>
+            </div>
+          )}
+
           {/* Proctoring & Integrity Audit Timeline */}
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+          <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <ShieldCheck size={16} className="text-emerald-600" />
-                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                <ShieldCheck size={16} className="text-emerald-400" />
+                <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
                   Proctoring & Exam Integrity Audit Log
                 </span>
               </div>
               <span
                 className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
                   proctoringLogs.length === 0
-                    ? "bg-emerald-100 text-emerald-800"
-                    : "bg-red-100 text-red-800"
+                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                    : "bg-red-500/20 text-red-300 border border-red-500/30"
                 }`}
               >
                 {proctoringLogs.length === 0
@@ -1089,7 +1327,7 @@ export function VoiceInterviewRoom({
             </div>
 
             {proctoringLogs.length === 0 ? (
-              <p className="text-xs text-slate-600 m-0">
+              <p className="text-xs text-slate-400 m-0">
                 Zero security flags recorded. The candidate remained centered in webcam view with continuous window focus.
               </p>
             ) : (
@@ -1097,10 +1335,10 @@ export function VoiceInterviewRoom({
                 {proctoringLogs.map((log) => (
                   <div
                     key={log.id}
-                    className="p-2 rounded-lg bg-white border border-slate-200 text-xs flex items-center justify-between"
+                    className="p-2 rounded-lg bg-[#0B0F19] border border-slate-800 text-xs flex items-center justify-between"
                   >
-                    <span className="text-slate-700 font-medium">{log.message}</span>
-                    <span className="text-[10px] text-slate-400 font-mono shrink-0 ml-2">
+                    <span className="text-slate-300 font-medium">{log.message}</span>
+                    <span className="text-[10px] text-slate-500 font-mono shrink-0 ml-2">
                       {log.timestamp}
                     </span>
                   </div>
@@ -1109,11 +1347,11 @@ export function VoiceInterviewRoom({
             )}
           </div>
 
-          <div className="pt-4 border-t border-[#E2E8F0] flex justify-end gap-3">
-            <Link to="/mock-tests" className="btn btn-outline text-xs py-2 px-4 font-bold">
+          <div className="pt-4 border-t border-slate-800 flex justify-end gap-3">
+            <Link to="/mock-tests" className="px-4 py-2 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-bold transition-colors">
               View All Results
             </Link>
-            <Link to="/dashboard" className="btn btn-primary text-xs py-2 px-5 font-bold">
+            <Link to="/dashboard" className="px-5 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-bold shadow-lg transition-all">
               Return to Dashboard
             </Link>
           </div>
@@ -1458,13 +1696,13 @@ export function VoiceInterviewRoom({
       {/* Voluntary End Call Confirmation Modal */}
       {confirmEndOpen && (
         <div className="modal-overlay" style={{ zIndex: 9999 }}>
-          <div className="modal-content max-w-sm p-6 bg-white rounded-2xl shadow-2xl text-center space-y-4">
-            <div className="p-3.5 rounded-full bg-red-100 text-red-600 w-fit mx-auto">
+          <div className="modal-content max-w-sm p-6 bg-[#131B2E] border border-slate-700 rounded-2xl shadow-2xl text-center space-y-4 text-white">
+            <div className="p-3.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 w-fit mx-auto">
               <PhoneOff size={24} />
             </div>
             <div className="space-y-1">
-              <h3 className="text-base font-extrabold text-slate-900 m-0">End Interview Early?</h3>
-              <p className="text-xs text-slate-500 m-0">
+              <h3 className="text-base font-extrabold text-white m-0">End Interview Early?</h3>
+              <p className="text-xs text-slate-400 m-0">
                 Your submitted turns will be evaluated and your performance scorecard will be generated.
               </p>
             </div>
@@ -1472,14 +1710,14 @@ export function VoiceInterviewRoom({
               <button
                 type="button"
                 onClick={() => setConfirmEndOpen(false)}
-                className="btn btn-outline text-xs py-2 px-4 font-bold"
+                className="px-4 py-2 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-colors"
               >
                 Resume Call
               </button>
               <button
                 type="button"
                 onClick={handleEndInterview}
-                className="btn btn-primary text-xs py-2 px-4 font-bold bg-red-600 hover:bg-red-700 text-white cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-lg transition-colors cursor-pointer"
               >
                 Yes, End Assessment
               </button>
