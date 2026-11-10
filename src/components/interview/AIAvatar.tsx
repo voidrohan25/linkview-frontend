@@ -103,7 +103,7 @@ export function AIAvatar({
 
           {/* Exact Reference Pill: [ 🤖 AI Interviewer ● ] in bottom-left */}
           <div className="absolute bottom-3.5 left-3.5 z-20 flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0B0F19]/80 backdrop-blur-md border border-slate-700/60 text-white text-xs font-semibold shadow-lg pointer-events-none">
-            <span className="text-sm">🤖</span>
+            <Bot size={13} className="text-cyan-400" />
             <span>AI Interviewer</span>
             <span
               className={`w-1.5 h-1.5 rounded-full ${

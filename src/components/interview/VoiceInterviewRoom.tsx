@@ -1467,7 +1467,7 @@ export function VoiceInterviewRoom({
               <div className="rounded-2xl border border-slate-800/80 bg-[#131B2E] p-5 shadow-xl flex flex-col space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold shadow-md">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold shadow-md">
                       <HelpCircle size={18} className="text-white" />
                     </div>
                     <span className="text-white font-bold text-sm">Current Question</span>
