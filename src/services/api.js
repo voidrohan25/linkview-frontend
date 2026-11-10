@@ -1,8 +1,14 @@
 export const getApiBaseUrl = () => {
   const envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL;
-  if (!envUrl) return '/api';
-  const trimmed = String(envUrl).trim().replace(/\/+$/, '');
-  return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+  if (envUrl) {
+    const trimmed = String(envUrl).trim().replace(/\/+$/, '');
+    return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+  }
+  // When running in production (e.g. Vercel), connect directly to the live Render backend
+  if (typeof window !== 'undefined' && window.location.hostname && !window.location.hostname.includes('localhost') && window.location.hostname !== '127.0.0.1') {
+    return 'https://linktest-backend.onrender.com/api';
+  }
+  return '/api';
 };
 
 export const BASE_URL = getApiBaseUrl();
@@ -34,15 +40,26 @@ class ApiClient {
     };
 
     try {
-      const response = await fetch(url, {
+      let response = await fetch(url, {
         ...options,
         headers
       });
 
+      // If relative '/api' returned 404 or 405 (e.g. static rewrite), retry against Render backend directly
+      if ((response.status === 404 || response.status === 405) && !url.startsWith('http') && typeof window !== 'undefined') {
+        const directUrl = `https://linktest-backend.onrender.com/api${endpoint}`;
+        try {
+          const directRes = await fetch(directUrl, { ...options, headers });
+          if (directRes.ok || directRes.status < 500) {
+            response = directRes;
+          }
+        } catch {}
+      }
+
       const data = await response.json().catch(() => null);
 
       if (!response.ok) {
-        const error = new Error(data?.error?.message || `Request failed with status ${response.status}`);
+        const error = new Error(data?.error?.message || data?.message || `Request failed with status ${response.status}`);
         error.status = response.status;
         error.code = data?.error?.code || 'UNKNOWN_ERROR';
         error.details = data?.error?.details || [];
@@ -52,6 +69,23 @@ class ApiClient {
       return data;
     } catch (err) {
       if (err.name === 'TypeError' && err.message.includes('fetch')) {
+        // Fallback retry if BASE_URL failed network connection
+        if (!url.startsWith('https://linktest-backend.onrender.com') && typeof window !== 'undefined') {
+          try {
+            const fallbackUrl = `https://linktest-backend.onrender.com/api${endpoint}`;
+            const fallbackResponse = await fetch(fallbackUrl, { ...options, headers });
+            const fallbackData = await fallbackResponse.json().catch(() => null);
+            if (!fallbackResponse.ok) {
+              const fbErr = new Error(fallbackData?.error?.message || fallbackData?.message || `Request failed with status ${fallbackResponse.status}`);
+              fbErr.status = fallbackResponse.status;
+              fbErr.code = fallbackData?.error?.code || 'UNKNOWN_ERROR';
+              throw fbErr;
+            }
+            return fallbackData;
+          } catch (retryErr) {
+            if (retryErr.status) throw retryErr;
+          }
+        }
         const networkError = new Error('Cannot connect to LinkTest server. Please verify backend is running on port 8081.');
         networkError.code = 'NETWORK_ERROR';
         throw networkError;
