@@ -70,9 +70,14 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
+  const rawRole = String(user?.role || '').toUpperCase();
+  const mappedRole = (rawRole === 'TRAINER') ? 'TEACHER' : (rawRole === 'SUPER_ADMIN') ? 'ADMIN' : rawRole;
+
   const normalizedUser = user ? {
     ...user,
-    role: String(user.role || '').toUpperCase()
+    role: mappedRole,
+    fullName: user.fullName || user.full_name,
+    full_name: user.full_name || user.fullName,
   } : null;
 
   const value = {

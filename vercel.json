@@ -5,7 +5,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://linktest-backend.onrender.com/api/$1"
+      "destination": "https://linkview-backend.onrender.com/api/$1"
     },
     {
       "source": "/(.*)",

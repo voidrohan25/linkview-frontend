@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { getApiBaseUrl } from "../../services/api";
+
+const BASE_URL = getApiBaseUrl();
 import {
   Mic,
   MicOff,
@@ -84,7 +87,7 @@ export function VoiceInterviewRoom({
       setPreflightOpen(false);
       setInterviewStarted(true);
       setupActiveMicStream(selectedMicDeviceId);
-      fetch(`/api/interviews?id=${sid}`)
+      fetch(`${BASE_URL}/interviews?id=${sid}`)
         .then((res) => res.json())
         .then((data) => {
           if (data.success && data.data) {
@@ -330,6 +333,33 @@ export function VoiceInterviewRoom({
     }
   }, [selectedMicDeviceId, interviewStarted, completed, setupActiveMicStream]);
 
+  // Hotplug detection: auto-detect when candidate plugs in an external USB microphone
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.addEventListener) return;
+    const handleDeviceChange = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const mics = devices.filter((d) => d.kind === "audioinput");
+        const usbMic = mics.find((m) =>
+          m.label.toLowerCase().includes("usb") ||
+          m.label.toLowerCase().includes("external") ||
+          m.label.toLowerCase().includes("headset") ||
+          m.label.toLowerCase().includes("wireless") ||
+          m.label.toLowerCase().includes("bluetooth")
+        );
+        if (usbMic && usbMic.deviceId !== selectedMicDeviceId) {
+          setSelectedMicDeviceId(usbMic.deviceId);
+          setSelectedMicLabel(usbMic.label || "External USB Microphone");
+          setupActiveMicStream(usbMic.deviceId);
+        }
+      } catch {}
+    };
+    navigator.mediaDevices.addEventListener("devicechange", handleDeviceChange);
+    return () => {
+      navigator.mediaDevices.removeEventListener("devicechange", handleDeviceChange);
+    };
+  }, [selectedMicDeviceId, setupActiveMicStream]);
+
   // Timer interval
   useEffect(() => {
     if (!interviewStarted || completed) return;
@@ -371,7 +401,7 @@ export function VoiceInterviewRoom({
       const activeId = sessionId || `int-session-${now}`;
 
       try {
-        const res = await fetch("/api/proctoring", {
+        const res = await fetch(`${BASE_URL}/proctoring`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -524,7 +554,7 @@ export function VoiceInterviewRoom({
     const persona = AVATAR_PERSONAS[selectedPersona];
 
     try {
-      const ttsRes = await fetch("/api/tts", {
+      const ttsRes = await fetch(`${BASE_URL}/tts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -733,13 +763,13 @@ export function VoiceInterviewRoom({
     setupActiveMicStream(selectedMicDeviceId);
 
     try {
-      const res = await fetch("/api/interviews", {
+      const res = await fetch(`${BASE_URL}/interviews`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           track: track.toLowerCase(),
           difficulty,
-          studentName: authUser?.fullName || "Candidate",
+          studentName: authUser?.fullName || authUser?.full_name || "Candidate",
         }),
       });
 
@@ -905,11 +935,12 @@ export function VoiceInterviewRoom({
 
     try {
       const activeId = sessionId || `int-fallback-${Date.now()}`;
-      const res = await fetch("/api/interviews", {
+      const res = await fetch(`${BASE_URL}/interviews`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionId: activeId,
+          track,
           answer: finalAnswer,
           proctoringEvents: proctoringLogs,
         }),
@@ -920,9 +951,9 @@ export function VoiceInterviewRoom({
         const session = data.data;
         setTurnHistory(session.history || session.turns || []);
 
-        if (session.status === "completed" || session.currentTurn > session.totalTurns) {
+        if (session.status === "completed" || session.currentTurn > session.totalTurns || data.scorecard) {
           setCompleted(true);
-          setFinalScorecard(session.scorecard || session.finalFeedback || {});
+          setFinalScorecard(data.scorecard || session.scorecard || session.finalFeedback || {});
         } else {
           setCurrentTurn(session.currentTurn);
           setCurrentQuestion(session.currentQuestion);
@@ -950,34 +981,45 @@ export function VoiceInterviewRoom({
     if (sharedStream) {
       sharedStream.getTracks().forEach((track) => track.stop());
     }
+    if (activeMicStreamRef.current) {
+      activeMicStreamRef.current.getTracks().forEach((track) => track.stop());
+    }
 
     const currentAns = (studentAnswer + (interimText ? ` ${interimText}` : "")).trim();
 
     try {
-      if (sessionId) {
-        await fetch("/api/interviews", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId,
-            answer: currentAns || "Interview concluded by candidate.",
-            action: "end",
-            proctoringEvents: proctoringLogs,
-          }),
-        }).catch(() => {});
+      const activeId = sessionId || `int-fallback-${Date.now()}`;
+      const res = await fetch(`${BASE_URL}/interviews`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: activeId,
+          track,
+          answer: currentAns || "Interview concluded by candidate.",
+          action: "end",
+          proctoringEvents: proctoringLogs,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && (data.scorecard || data.data?.scorecard)) {
+        setFinalScorecard(data.scorecard || data.data.scorecard);
+        setCompleted(true);
+        return;
       }
-    } catch {}
+    } catch (e) {
+      console.warn("End interview API call notice:", e);
+    }
 
     const count = turnHistory.length + (currentAns ? 1 : 0);
-    const score = Math.min(95, Math.max(50, Math.round(52 + count * 10)));
+    const score = Math.min(95, Math.max(55, Math.round(65 + count * 8)));
     setFinalScorecard({
       overallScore: score,
       technicalAccuracy: Math.min(95, score + 4),
-      conceptualUnderstanding: Math.max(48, score - 3),
-      communication: Math.min(92, score + 2),
-      problemSolving: Math.max(50, score - 2),
+      conceptualUnderstanding: Math.max(50, score - 2),
+      communication: Math.min(92, score + 3),
+      problemSolving: Math.max(52, score - 1),
       strengths: [
-        "Structured verbal communication under live assessment",
+        `Structured verbal communication on ${track} core concepts`,
         "Clear technical vocabulary and domain terminology",
         "Prompt engagement and professional demeanor",
       ],
@@ -989,7 +1031,7 @@ export function VoiceInterviewRoom({
         `Review internal system mechanics and memory allocation for ${track}`,
         "Practice mock interview sessions to build oral conciseness",
       ],
-      aiFeedback: `Interview ended voluntarily by candidate. Evaluation summarized across completed turns with an overall score of ${score}%.`,
+      aiFeedback: `Interview ended voluntarily by candidate. Evaluation summarized across ${count} completed turn(s) with an overall score of ${score}%.`,
     });
     setCompleted(true);
   };

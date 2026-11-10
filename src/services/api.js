@@ -6,7 +6,7 @@ export const getApiBaseUrl = () => {
   }
   // When running in production (e.g. Vercel), connect directly to the live Render backend
   if (typeof window !== 'undefined' && window.location.hostname && !window.location.hostname.includes('localhost') && window.location.hostname !== '127.0.0.1') {
-    return 'https://linktest-backend.onrender.com/api';
+    return 'https://linkview-backend.onrender.com/api';
   }
   return '/api';
 };
@@ -47,7 +47,7 @@ class ApiClient {
 
       // If relative '/api' returned 404 or 405 (e.g. static rewrite), retry against Render backend directly
       if ((response.status === 404 || response.status === 405) && !url.startsWith('http') && typeof window !== 'undefined') {
-        const directUrl = `https://linktest-backend.onrender.com/api${endpoint}`;
+        const directUrl = `https://linkview-backend.onrender.com/api${endpoint}`;
         try {
           const directRes = await fetch(directUrl, { ...options, headers });
           if (directRes.ok || directRes.status < 500) {
@@ -128,16 +128,33 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ email, password })
     });
-    if (res.data?.token) {
-      this.setToken(res.data.token);
+    const token = res?.data?.token || res?.token;
+    if (token) {
+      this.setToken(token);
     }
-    return res.data;
+    const user = res?.data?.user || res?.user || res?.data;
+    return {
+      user: user ? {
+        ...user,
+        role: String(user.role || '').toUpperCase(),
+        fullName: user.fullName || user.full_name,
+        full_name: user.full_name || user.fullName,
+      } : null,
+      token,
+      ...(res?.data || res || {})
+    };
   }
 
   async getMe() {
     if (!this.token) return null;
     const res = await this.request('/auth/me');
-    return res.data.user;
+    const user = res?.data?.user || res?.user || res?.data;
+    return user ? {
+      ...user,
+      role: String(user.role || '').toUpperCase(),
+      fullName: user.fullName || user.full_name,
+      full_name: user.full_name || user.fullName,
+    } : null;
   }
 
   async loginWithGoogle(credential) {
