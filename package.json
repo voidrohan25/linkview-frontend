@@ -1,6 +1,6 @@
 {
   "name": "linktest-frontend",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Frontend UI for LinkTest AI Learning Platform",
   "type": "module",
   "scripts": {
